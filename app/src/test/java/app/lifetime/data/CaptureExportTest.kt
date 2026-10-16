@@ -157,6 +157,21 @@ class CaptureExportTest {
         } finally { f.scope.cancel() }
     }
 
+    @Test fun invalidCaptureLocationsDoNotReachTheDatabaseOrExif() = runBlocking {
+        var writes = 0
+        val f = Fixture(writePhotoLocation = { _, _ -> writes++ })
+        try {
+            listOf(0.0 to -0.0, Double.NaN to 12.0, 12.0 to Double.POSITIVE_INFINITY, 91.0 to 12.0).forEach { (lat, lon) ->
+                val vm = f.camera({ location(lat, lon) })
+                withTimeout(5_000) { vm.onCaptured(f.captureFile(MediaType.PHOTO), MediaType.PHOTO, 0).join() }
+            }
+            assertTrue(f.dao.rows.all { it.latitude == null && it.longitude == null })
+            assertEquals(0, f.dao.locationUpdates)
+            assertEquals(0, writes)
+            assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
     @Test fun photoLocationReachesTheDatabaseBeforeExifIsWritten() = runBlocking {
         lateinit var f: Fixture
         var writes = 0

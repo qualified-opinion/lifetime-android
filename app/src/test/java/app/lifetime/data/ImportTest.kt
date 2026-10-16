@@ -94,16 +94,29 @@ class ImportTest {
         assertNull(openOriginalOrPlain<String>(false, { error("Must not request original") }, { null }))
     }
 
-    @Test fun plainOpenerFailuresAndUnrelatedOriginalFailuresAreNotSwallowed() {
+    @Test fun unrelatedOriginalFailuresFallBackAndPlainOpenerFailuresAreNotSwallowed() {
         val failure = IOException("Read failed")
+        listOf(failure, IllegalArgumentException("Invalid original URI"), IllegalStateException("Provider unavailable"), Exception("Provider failed")).forEach { originalFailure ->
+            assertEquals("plain", openOriginalOrPlain(true, { throw originalFailure }, { "plain" }))
+        }
+        listOf<() -> String?>(
+            { openOriginalOrPlain(true, { throw SecurityException() }, { throw failure }) },
+            { openOriginalOrPlain(true, { null }, { throw failure }) },
+            { openOriginalOrPlain(false, { error("Must not request original") }, { throw failure }) },
+        ).forEach { open ->
+            try {
+                open()
+                fail("Expected plain failure")
+            } catch (actual: IOException) { assertSame(failure, actual) }
+        }
+    }
+
+    @Test fun originalCancellationPropagatesWithoutOpeningPlain() {
+        val cancelled = CancellationException("Original open cancelled")
         try {
-            openOriginalOrPlain(true, { throw failure }, { error("Must not hide a read failure") })
-            fail("Expected read failure")
-        } catch (actual: IOException) { assertSame(failure, actual) }
-        try {
-            openOriginalOrPlain(true, { throw SecurityException() }, { throw failure })
-            fail("Expected plain failure")
-        } catch (actual: IOException) { assertSame(failure, actual) }
+            openOriginalOrPlain(true, { throw cancelled }, { error("Must not open plain after cancellation") })
+            fail("Expected cancellation")
+        } catch (actual: CancellationException) { assertSame(cancelled, actual) }
     }
 
     @Test fun undatedPixelFilenameIsFiledOnItsDateWithExifLocationAndClosesSource() = runBlocking {

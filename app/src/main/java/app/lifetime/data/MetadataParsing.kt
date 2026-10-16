@@ -20,9 +20,9 @@ object MetadataParsing {
     private val ISO6709 = Regex("""([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)""")
     private val COMPACT_DATE = DateTimeFormatter.ofPattern("uuuuMMdd").withResolverStyle(ResolverStyle.STRICT)
     private val FILE_TIME = DateTimeFormatter.ofPattern("HHmmss").withResolverStyle(ResolverStyle.STRICT)
-    private val NAMED_TIMESTAMP = Regex("""(?:IMG_|PXL_|VID_)?(\d{8})_(\d{6})(?:\d{3}|_\d{3})?(?:\.[A-Za-z0-9]+)?""")
-    private val DASHED_TIMESTAMP = Regex("""(\d{4}-\d{2}-\d{2}) (\d{2}\.\d{2}\.\d{2})(?:\.[A-Za-z0-9]+)?""")
-    private val NAMED_DATE = Regex("""(?:(?:IMG_|PXL_|VID_)?(\d{8})|IMG-(\d{8})-WA\d{4})(?:\.[A-Za-z0-9]+)?""")
+    private val NAMED_TIMESTAMP = Regex("""(?:IMG_|PXL_|VID_)?(\d{8})_(\d{6})(?:\d{3}|_\d{3})?(?:\.[A-Za-z0-9]+)*""")
+    private val DASHED_TIMESTAMP = Regex("""(\d{4}-\d{2}-\d{2}) (\d{2}\.\d{2}\.\d{2})(?:\.[A-Za-z0-9]+)*""")
+    private val NAMED_DATE = Regex("""(?:(?:IMG_|PXL_|VID_)(\d{8})|(?:IMG|VID)-(\d{8})-WA\d{4})(?:\.[A-Za-z0-9]+)*""")
 
     /** 1 Jan 1971: anything earlier is a placeholder, not a real capture date. */
     const val MIN_PLAUSIBLE_DATE = 31_536_000_000L
@@ -70,8 +70,12 @@ object MetadataParsing {
         return latitude to longitude
     }
 
-    /** Only known, complete filename patterns are dates; a date without a time uses local noon. */
-    fun parseDisplayName(value: String?, zone: ZoneId = ZoneId.systemDefault()): Long? {
+    /** Known, complete filename dates, at most a day ahead; a date without a time uses local noon. */
+    fun parseDisplayName(
+        value: String?,
+        zone: ZoneId = ZoneId.systemDefault(),
+        now: Long = System.currentTimeMillis(),
+    ): Long? {
         if (value.isNullOrBlank()) return null
         return runCatching {
             val timestamp = NAMED_TIMESTAMP.matchEntire(value)
@@ -92,7 +96,7 @@ object MetadataParsing {
                 else -> return null
             }
             local.atZone(zone).toInstant().toEpochMilli()
-        }.getOrNull()?.takeIf { it > MIN_PLAUSIBLE_DATE }
+        }.getOrNull()?.takeIf { it > MIN_PLAUSIBLE_DATE && it <= now + 86_400_000L }
     }
 
     data class ImportDate(val capturedAt: Long, val usedNow: Boolean)
@@ -105,11 +109,12 @@ object MetadataParsing {
         now: () -> Long = System::currentTimeMillis,
         zone: ZoneId = ZoneId.systemDefault(),
     ): ImportDate {
+        val importNow = now()
         val found = embedded
             ?: providerTaken.firstNotNullOfOrNull(::normaliseProviderDate)
-            ?: parseDisplayName(displayName, zone)
+            ?: parseDisplayName(displayName, zone, importNow)
             ?: lastModified?.let(::normaliseProviderDate)
-        return ImportDate(found ?: now(), usedNow = found == null)
+        return ImportDate(found ?: importNow, usedNow = found == null)
     }
 
     /**

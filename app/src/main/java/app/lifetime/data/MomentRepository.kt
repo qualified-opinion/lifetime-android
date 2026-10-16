@@ -85,7 +85,7 @@ class MomentRepository(
                 ),
             )
         } catch (failure: Throwable) {
-            committed?.delete()
+            committed?.let { if (!it.delete()) Log.w(TAG, "Couldn't delete committed capture $it", failure) }
             throw failure
         } finally {
             temp.delete()
@@ -93,7 +93,8 @@ class MomentRepository(
     }
 
     suspend fun updateLocation(id: Long, location: Location) = withContext(Dispatchers.IO) {
-        if (dao.updateLocation(id, location.latitude, location.longitude) == 0) return@withContext
+        val coordinates = MetadataParsing.validLocation(location.latitude, location.longitude) ?: return@withContext
+        if (dao.updateLocation(id, coordinates.first, coordinates.second) == 0) return@withContext
         val moment = dao.get(id)
         if (moment?.type == MediaType.PHOTO) {
             // Keep GPS in exported photos too; EXIF failure must not affect the saved row.
@@ -145,9 +146,16 @@ class MomentRepository(
             mime, type, extension,
             openSource = {
                 openOriginalOrPlain(
-                    useOriginal = Build.VERSION.SDK_INT >= 29 && uri.authority == MediaStore.AUTHORITY &&
+                    useOriginal = Build.VERSION.SDK_INT >= 29 &&
                         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED,
-                    openOriginal = { resolver.openInputStream(MediaStore.setRequireOriginal(uri)) },
+                    openOriginal = {
+                        val mediaUri = when {
+                            uri.authority == MediaStore.AUTHORITY -> uri
+                            DocumentsContract.isDocumentUri(context, uri) -> MediaStore.getMediaUri(context, uri)
+                            else -> null
+                        }
+                        mediaUri?.let { resolver.openInputStream(MediaStore.setRequireOriginal(it)) }
+                    },
                     openPlain = { resolver.openInputStream(uri) },
                 )
             },
@@ -210,7 +218,7 @@ class MomentRepository(
                         ),
                     )
                 } catch (failure: Throwable) {
-                    committed?.delete()
+                    committed?.let { if (!it.delete()) Log.w(TAG, "Couldn't delete committed import $it", failure) }
                     throw failure
                 }
             }
@@ -352,15 +360,15 @@ class MomentRepository(
     }
 }
 
-/** Original access is optional: denied or unsupported providers still allow importing the plain URI. */
+/** Original access is optional: any non-cancellation failure falls back to the plain URI. */
 internal fun <T : Any> openOriginalOrPlain(useOriginal: Boolean, openOriginal: () -> T?, openPlain: () -> T?): T? {
     if (useOriginal) {
         try {
             openOriginal()?.let { return it }
-        } catch (_: SecurityException) {
-            // Includes providers that reject requireOriginal even with the permission.
-        } catch (_: UnsupportedOperationException) {
-            // Some picker/provider versions do not support original access.
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Conversion and original access can fail even when the plain URI is readable.
         }
     }
     return openPlain()
