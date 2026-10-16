@@ -1,25 +1,46 @@
 package app.lifetime.ui.camera
 
+import android.location.Location
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import app.lifetime.AppContainer
 import app.lifetime.data.MediaType
 import app.lifetime.data.Moment
+import app.lifetime.data.MomentRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
-class CameraViewModel(private val container: AppContainer) : ViewModel() {
+class CameraViewModel internal constructor(
+    private val repository: MomentRepository,
+    private val appScope: CoroutineScope,
+    val locationTagging: StateFlow<Boolean>,
+    private val updateLocationTagging: (Boolean) -> Unit,
+    private val currentLocation: suspend () -> Location?,
+) : ViewModel() {
+    constructor(container: AppContainer) : this(
+        container.repository,
+        container.appScope,
+        container.preferences.locationTagging,
+        container.preferences::setLocationTagging,
+        container.locationProvider::currentLocation,
+    )
 
-    private val repository = container.repository
-
-    val locationTagging: StateFlow<Boolean> = container.preferences.locationTagging
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages = _messages.receiveAsFlow()
 
     private val _lastCapture = MutableStateFlow<Moment?>(null)
     val lastCapture: StateFlow<Moment?> = _lastCapture.asStateFlow()
 
-    fun setLocationTagging(enabled: Boolean) = container.preferences.setLocationTagging(enabled)
+    fun setLocationTagging(enabled: Boolean) = updateLocationTagging(enabled)
 
     fun newCaptureFile(type: MediaType): File = repository.newCaptureFile(type)
 
@@ -29,11 +50,28 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
      * Files a finished capture. Runs in the app scope, not viewModelScope, so a capture
      * still lands in the timeline if the user closes the camera straight away.
      */
-    fun onCaptured(file: File, type: MediaType, capturedAt: Long) {
+    fun onCaptured(file: File, type: MediaType, capturedAt: Long): Job {
         val tagLocation = locationTagging.value
-        container.appScope.launch {
-            val location = if (tagLocation) container.locationProvider.currentLocation() else null
-            _lastCapture.value = repository.addCaptured(file, type, capturedAt, location)
+        return appScope.launch(Dispatchers.IO) {
+            val moment = try {
+                repository.addCaptured(file, type, capturedAt)
+            } catch (failure: Exception) {
+                _messages.trySend("Couldn't save that capture")
+                if (failure is CancellationException) throw failure
+                return@launch
+            }
+            _lastCapture.value = moment
+
+            // Location is optional enrichment: the file and row are already safe.
+            if (tagLocation) {
+                try {
+                    currentLocation()?.let { repository.updateLocation(moment.id, it) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Log.w("CameraViewModel", "Couldn't tag capture location", failure)
+                }
+            }
         }
     }
 }

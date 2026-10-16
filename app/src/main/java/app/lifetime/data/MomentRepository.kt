@@ -3,10 +3,13 @@ package app.lifetime.data
 import android.content.Context
 import android.location.Location
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.exifinterface.media.ExifInterface
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -14,6 +17,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
 import java.time.Instant
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
@@ -28,6 +33,9 @@ class MomentRepository(
     private val dao: MomentDao,
     private val storage: MediaStorage,
     private val metadataReader: MediaMetadataReader,
+    private val writePhotoLocation: (File, Location) -> Unit = { file, location ->
+        ExifInterface(file).apply { setGpsInfo(location); saveAttributes() }
+    },
 ) {
 
     val moments: Flow<List<Moment>> = dao.observeAll()
@@ -45,32 +53,44 @@ class MomentRepository(
         temp: File,
         type: MediaType,
         capturedAt: Long,
-        location: Location?,
-    ): Moment = withContext(Dispatchers.IO) {
-        if (type == MediaType.PHOTO && location != null) {
-            // Also write GPS into the JPEG so exported files keep their place.
-            runCatching { ExifInterface(temp).apply { setGpsInfo(location); saveAttributes() } }
+    ): Moment = withContext(NonCancellable + Dispatchers.IO) {
+        // Finish the file/row pair even if the caller is cancelled during filing.
+        var committed: File? = null
+        try {
+            val meta = metadataReader.read(temp, type)
+            val extension = temp.extension
+            val size = temp.length()
+            val relativePath = storage.commit(temp, type, capturedAt, extension)
+            committed = File(storage.root, relativePath)
+            insert(
+                Moment(
+                    type = type,
+                    source = MomentSource.CAMERA,
+                    relativePath = relativePath,
+                    mimeType = if (type == MediaType.VIDEO) "video/mp4" else "image/jpeg",
+                    capturedAt = capturedAt,
+                    addedAt = System.currentTimeMillis(),
+                    width = meta.width,
+                    height = meta.height,
+                    durationMs = meta.durationMs,
+                    sizeBytes = size,
+                ),
+            )
+        } catch (failure: Throwable) {
+            committed?.delete()
+            throw failure
+        } finally {
+            temp.delete()
         }
-        val meta = metadataReader.read(temp, type)
-        val extension = temp.extension
-        val size = temp.length()
-        val relativePath = storage.commit(temp, type, capturedAt, extension)
-        insert(
-            Moment(
-                type = type,
-                source = MomentSource.CAMERA,
-                relativePath = relativePath,
-                mimeType = if (type == MediaType.VIDEO) "video/mp4" else "image/jpeg",
-                capturedAt = capturedAt,
-                addedAt = System.currentTimeMillis(),
-                latitude = location?.latitude ?: meta.latitude,
-                longitude = location?.longitude ?: meta.longitude,
-                width = meta.width,
-                height = meta.height,
-                durationMs = meta.durationMs,
-                sizeBytes = size,
-            ),
-        )
+    }
+
+    suspend fun updateLocation(id: Long, location: Location) = withContext(Dispatchers.IO) {
+        dao.updateLocation(id, location.latitude, location.longitude)
+        val moment = dao.get(id)
+        if (moment?.type == MediaType.PHOTO) {
+            // Keep GPS in exported photos too; EXIF failure must not affect the saved row.
+            runCatching { writePhotoLocation(storage.fileFor(moment), location) }
+        }
     }
 
     /**
@@ -150,31 +170,86 @@ class MomentRepository(
         dao.delete(moment)
     }
 
+    data class ExportResult(val exported: Int, val missing: Int)
+
     /**
      * Writes every file plus a moments.json index into a zip at [target] (a file the user
-     * picked with the system "save as" dialog). Returns the number of moments exported.
+     * picked with the system "save as" dialog). Returns exported and missing file counts.
      */
-    suspend fun exportZip(target: Uri): Int = withContext(Dispatchers.IO) {
-        val all = dao.getAll()
-        val index = JSONArray()
-        val output = context.contentResolver.openOutputStream(target) ?: error("Cannot write $target")
-        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
-            // Photos and videos are already compressed; storing them is much faster.
-            zip.setLevel(Deflater.NO_COMPRESSION)
-            for (moment in all) {
-                val file = storage.fileFor(moment)
-                if (!file.exists()) continue
-                zip.putNextEntry(ZipEntry("media/${moment.relativePath}").apply { time = moment.capturedAt })
-                file.inputStream().use { it.copyTo(zip) }
-                zip.closeEntry()
-                index.put(moment.toJson())
+    suspend fun exportZip(target: Uri): ExportResult = exportZip(
+        openTarget = { context.contentResolver.openOutputStream(target) },
+        deleteTarget = { DocumentsContract.deleteDocument(context.contentResolver, target) },
+    )
+
+    /** Callbacks let JVM tests exercise document providers without Android's JSON stubs. */
+    internal suspend fun exportZip(
+        openTarget: () -> OutputStream?,
+        deleteTarget: () -> Boolean,
+        encodeIndex: (List<Moment>) -> ByteArray = { moments ->
+            val index = JSONArray()
+            moments.forEach { index.put(it.toJson()) }
+            JSONObject().put("version", 1).put("moments", index).toString(2).toByteArray()
+        },
+    ): ExportResult = try {
+        withContext(Dispatchers.IO) {
+            ensureActive()
+            val all = dao.getAll()
+            val index = mutableListOf<Moment>()
+            var missing = 0
+            val output = openTarget() ?: error("Cannot open export document")
+            // ZipOutputStream.close() can throw while finishing, before closing its output.
+            output.use {
+                ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+                    // Photos and videos are already compressed; storing them is much faster.
+                    zip.setLevel(Deflater.NO_COMPRESSION)
+                    for (moment in all) {
+                        ensureActive()
+                        val file = storage.fileFor(moment)
+                        if (!file.exists()) {
+                            missing++
+                            continue
+                        }
+                        zip.putNextEntry(ZipEntry("media/${moment.relativePath}").apply { time = moment.capturedAt })
+                        file.inputStream().use { input ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            while (true) {
+                                ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                zip.write(buffer, 0, count)
+                            }
+                        }
+                        zip.closeEntry()
+                        index.add(moment)
+                    }
+                    zip.setLevel(Deflater.DEFAULT_COMPRESSION)
+                    zip.putNextEntry(ZipEntry("moments.json"))
+                    zip.write(encodeIndex(index))
+                    zip.closeEntry()
+                }
             }
-            zip.setLevel(Deflater.DEFAULT_COMPRESSION)
-            zip.putNextEntry(ZipEntry("moments.json"))
-            zip.write(JSONObject().put("version", 1).put("moments", index).toString(2).toByteArray())
-            zip.closeEntry()
+            ensureActive() // Includes errors/cancellation while finishing and closing the zip.
+            ExportResult(index.size, missing)
         }
-        index.length()
+    } catch (failure: Throwable) {
+        // Also catches cancellation on the dispatch back to the caller after closing.
+        withContext(NonCancellable) {
+            // Keep the return from IO non-cancellable too, so cleanup errors aren't lost.
+            val cleanupFailure = withContext(Dispatchers.IO) {
+                runCatching { check(deleteTarget()) { "Provider refused to delete the document" } }.exceptionOrNull()
+            }
+            if (cleanupFailure != null) {
+                val message = "Couldn't delete the partial export document. Delete it manually before retrying."
+                val error = if (failure is CancellationException) {
+                    CancellationException(message).apply { initCause(failure) }
+                } else {
+                    IOException(message, failure)
+                }
+                error.addSuppressed(cleanupFailure)
+                throw error
+            }
+            throw failure
+        }
     }
 
     private fun Moment.toJson() = JSONObject().apply {

@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.lifetime.data.Moment
 import app.lifetime.data.MomentRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,12 +21,18 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
 
-class TimelineViewModel(private val repository: MomentRepository) : ViewModel() {
+class TimelineViewModel internal constructor(
+    private val repository: MomentRepository,
+    scopeOverride: CoroutineScope?,
+) : ViewModel() {
+    constructor(repository: MomentRepository) : this(repository, null)
+
+    private val scope = scopeOverride ?: viewModelScope
 
     val state: StateFlow<TimelineState> = repository.moments
         .map(::buildTimeline)
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimelineState())
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), TimelineState())
 
     /** A long import/export in progress. [progress] is 0..1, or null when unknown. */
     data class Busy(val label: String, val progress: Float? = null)
@@ -57,17 +65,24 @@ class TimelineViewModel(private val repository: MomentRepository) : ViewModel() 
         }
     }
 
-    fun export(target: Uri) {
-        viewModelScope.launch {
-            _busy.value = Busy("Exporting your timeline…")
-            val result = runCatching { repository.exportZip(target) }
+    fun export(target: Uri) = export { repository.exportZip(target) }
+
+    internal fun export(writeZip: suspend () -> MomentRepository.ExportResult) = scope.launch {
+        _busy.value = Busy("Exporting your timeline…")
+        try {
+            val exported = writeZip()
+            _messages.trySend(buildString {
+                append("Exported ${exported.exported} moments")
+                if (exported.missing > 0) append(" (${exported.missing} files were missing)")
+            })
+        } catch (cancelled: CancellationException) {
+            // The repository has finished cleanup; sending must also work in a cancelled scope.
+            _messages.trySend("Export failed: ${cancelled.message ?: "Export cancelled"}")
+            throw cancelled
+        } catch (failure: Exception) {
+            _messages.trySend("Export failed: ${failure.message}")
+        } finally {
             _busy.value = null
-            _messages.send(
-                result.fold(
-                    onSuccess = { "Exported $it moments" },
-                    onFailure = { "Export failed: ${it.message}" },
-                ),
-            )
         }
     }
 
