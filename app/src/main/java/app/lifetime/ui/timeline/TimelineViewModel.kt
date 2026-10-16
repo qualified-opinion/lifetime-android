@@ -47,21 +47,31 @@ class TimelineViewModel internal constructor(
 
     fun fileFor(moment: Moment): File = repository.fileFor(moment)
 
+    // Kept in the ViewModel so returning from the picker or camera does not repeat the prompt.
+    internal var mediaLocationRequested = false
+
     fun import(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        viewModelScope.launch {
-            _busy.value = if (uris.size == 1) Busy("Importing…") else Busy("Importing 0 of ${uris.size}…", 0f)
-            val imported = repository.import(uris) { done, total ->
+        import(uris.size) { progress -> repository.import(uris, progress) }
+    }
+
+    internal fun import(
+        totalItems: Int,
+        read: suspend ((Int, Int) -> Unit) -> MomentRepository.ImportResult,
+    ) = scope.launch {
+        _busy.value = if (totalItems == 1) Busy("Importing…") else Busy("Importing 0 of $totalItems…", 0f)
+        try {
+            val result = read { done, total ->
                 if (total > 1) _busy.value = Busy("Importing $done of $total…", done / total.toFloat())
             }
+            val failed = totalItems - result.imported
+            _messages.send(buildString {
+                append(if (result.imported == 1) "Added 1 moment" else "Added ${result.imported} moments")
+                if (result.undated > 0) append(" (${result.undated} had no date, filed under today)")
+                if (failed > 0) append(" ($failed couldn't be read)")
+            })
+        } finally {
             _busy.value = null
-            val failed = uris.size - imported
-            _messages.send(
-                buildString {
-                    append(if (imported == 1) "Added 1 moment" else "Added $imported moments")
-                    if (failed > 0) append(" ($failed couldn't be read)")
-                },
-            )
         }
     }
 

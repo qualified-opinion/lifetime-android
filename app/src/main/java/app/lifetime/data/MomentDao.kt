@@ -22,7 +22,7 @@ interface MomentDao {
     suspend fun insert(moment: Moment): Long
 
     @Query("UPDATE moments SET latitude = :latitude, longitude = :longitude WHERE id = :id AND latitude IS NULL AND longitude IS NULL")
-    suspend fun updateLocation(id: Long, latitude: Double, longitude: Double)
+    suspend fun updateLocation(id: Long, latitude: Double, longitude: Double): Int
 
     @Delete
     suspend fun delete(moment: Moment)
