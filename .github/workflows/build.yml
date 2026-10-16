@@ -22,8 +22,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Unit tests and debug APK
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk lifetime-debug.apk
@@ -47,3 +47,14 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Debug build ($GITHUB_REF_NAME)" \
             --notes "Debug build of ${GITHUB_SHA::7} from $GITHUB_REF_NAME."
+
+      # Room writes its schema to app/schemas during the build. Fail if a schema change
+      # wasn't committed, so database changes always show up in review.
+      - name: Check Room schema is committed
+        run: |
+          if [ -n "$(git status --porcelain app/schemas)" ]; then
+            echo "::error::Room schema changed. Commit the files below."
+            git status --porcelain app/schemas
+            find app/schemas -name '*.json' -exec sh -c 'echo "----- $1"; cat "$1"' _ {} \;
+            exit 1
+          fi

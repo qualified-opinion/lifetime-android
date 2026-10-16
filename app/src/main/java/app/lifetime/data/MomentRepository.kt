@@ -7,6 +7,7 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -74,14 +75,21 @@ class MomentRepository(
 
     /**
      * Copies picked gallery items into the app. The original stays where it was.
-     * Returns how many were imported successfully.
+     * Returns how many were imported successfully. [onProgress] gets (done, total) after each item.
      */
-    suspend fun import(uris: List<Uri>): Int = withContext(Dispatchers.IO) {
-        uris.count { uri ->
+    suspend fun import(
+        uris: List<Uri>,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): Int = withContext(Dispatchers.IO) {
+        var imported = 0
+        uris.forEachIndexed { i, uri ->
+            ensureActive() // stop between items if the import is cancelled
             runCatching { importOne(uri) }
+                .onSuccess { imported++ }
                 .onFailure { Log.w(TAG, "Import failed for $uri", it) }
-                .isSuccess
+            onProgress(i + 1, uris.size)
         }
+        imported
     }
 
     private suspend fun importOne(uri: Uri): Moment {
@@ -123,7 +131,6 @@ class MomentRepository(
 
     /**
      * Falls back to what the content provider knows when the file has no embedded date.
-     * MediaStore uses seconds for some columns and millis for others, so normalise.
      */
     private fun providerDate(uri: Uri): Long? = runCatching {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -131,12 +138,7 @@ class MomentRepository(
             DATE_COLUMNS.firstNotNullOfOrNull { column ->
                 val index = cursor.getColumnIndex(column)
                 if (index < 0 || cursor.isNull(index)) return@firstNotNullOfOrNull null
-                val raw = cursor.getLong(index)
-                when {
-                    raw <= 0 -> null
-                    raw < 100_000_000_000L -> raw * 1000 // seconds
-                    else -> raw
-                }
+                MetadataParsing.normaliseProviderDate(cursor.getLong(index))
             }
         }
     }.getOrNull()

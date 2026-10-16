@@ -5,6 +5,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -16,23 +17,32 @@ import java.util.UUID
  * App-private storage needs no storage permission, is removed with the app, and is never
  * scanned by the system gallery, which keeps the timeline private. "Export" copies it out.
  */
-class MediaStorage(context: Context) {
+class MediaStorage(
+    val root: File,
+    private val incoming: File,
+    private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+) {
+    constructor(context: Context) : this(File(context.filesDir, "media"), File(context.filesDir, "incoming"))
 
-    val root: File = File(context.filesDir, "media").apply { mkdirs() }
-    private val incoming: File = File(context.filesDir, "incoming").apply { mkdirs() }
+    init {
+        root.mkdirs()
+        incoming.mkdirs()
+    }
 
     fun fileFor(moment: Moment): File = File(root, moment.relativePath)
 
     /** A scratch file for a capture or import that is still being written. */
-    fun newTempFile(extension: String): File =
-        File(incoming, "${UUID.randomUUID()}.$extension")
+    fun newTempFile(extension: String): File {
+        incoming.mkdirs()
+        return File(incoming, "${UUID.randomUUID()}.$extension")
+    }
 
     /**
      * Moves a finished temp file into its year/month folder and returns its relative path.
      */
     fun commit(temp: File, type: MediaType, capturedAt: Long, extension: String): String {
-        val time = Instant.ofEpochMilli(capturedAt).atZone(ZoneId.systemDefault())
-        val folder = "%04d/%02d".format(time.year, time.monthValue)
+        val time = Instant.ofEpochMilli(capturedAt).atZone(zone())
+        val folder = String.format(Locale.ROOT, "%04d/%02d", time.year, time.monthValue)
         val prefix = if (type == MediaType.VIDEO) "VID" else "IMG"
         val stamp = NAME_FORMAT.format(time)
 
@@ -43,6 +53,7 @@ class MediaStorage(context: Context) {
             name = "${prefix}_${stamp}_${n++}.$extension"
         }
         val target = File(dir, name)
+        // Rename is atomic on the same volume; fall back to copy if it isn't.
         if (!temp.renameTo(target)) {
             temp.copyTo(target, overwrite = false)
             temp.delete()
@@ -56,6 +67,6 @@ class MediaStorage(context: Context) {
     }
 
     private companion object {
-        val NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")
+        val NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS", Locale.ROOT)
     }
 }

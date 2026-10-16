@@ -26,9 +26,12 @@ class TimelineViewModel(private val repository: MomentRepository) : ViewModel() 
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimelineState())
 
+    /** A long import/export in progress. [progress] is 0..1, or null when unknown. */
+    data class Busy(val label: String, val progress: Float? = null)
+
     /** Non-null while a long import/export is running; shown as a small progress line. */
-    private val _busy = MutableStateFlow<String?>(null)
-    val busy: StateFlow<String?> = _busy.asStateFlow()
+    private val _busy = MutableStateFlow<Busy?>(null)
+    val busy: StateFlow<Busy?> = _busy.asStateFlow()
 
     /** One-off messages for the snackbar. */
     private val _messages = Channel<String>(Channel.BUFFERED)
@@ -39,8 +42,10 @@ class TimelineViewModel(private val repository: MomentRepository) : ViewModel() 
     fun import(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            _busy.value = if (uris.size == 1) "Importing…" else "Importing ${uris.size} items…"
-            val imported = repository.import(uris)
+            _busy.value = if (uris.size == 1) Busy("Importing…") else Busy("Importing 0 of ${uris.size}…", 0f)
+            val imported = repository.import(uris) { done, total ->
+                if (total > 1) _busy.value = Busy("Importing $done of $total…", done / total.toFloat())
+            }
             _busy.value = null
             val failed = uris.size - imported
             _messages.send(
@@ -54,7 +59,7 @@ class TimelineViewModel(private val repository: MomentRepository) : ViewModel() 
 
     fun export(target: Uri) {
         viewModelScope.launch {
-            _busy.value = "Exporting your timeline…"
+            _busy.value = Busy("Exporting your timeline…")
             val result = runCatching { repository.exportZip(target) }
             _busy.value = null
             _messages.send(
