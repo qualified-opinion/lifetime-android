@@ -55,8 +55,13 @@ class MediaStorage(
         val target = File(dir, name)
         // Rename is atomic on the same volume; fall back to copy if it isn't.
         if (!temp.renameTo(target)) {
-            temp.copyTo(target, overwrite = false)
-            temp.delete()
+            try {
+                temp.copyTo(target, overwrite = false)
+                check(temp.delete()) { "Couldn't remove incoming file after filing" }
+            } catch (failure: Throwable) {
+                if (failure !is FileAlreadyExistsException) target.delete()
+                throw failure
+            }
         }
         return "$folder/$name"
     }

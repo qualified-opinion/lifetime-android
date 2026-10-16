@@ -95,6 +95,9 @@ fun CameraScreen(onClose: () -> Unit, onOpenMoment: (Long) -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as LifetimeApp
     val vm: CameraViewModel = viewModel { CameraViewModel(app.container) }
+    LaunchedEffect(vm) {
+        vm.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+    }
 
     var hasCamera by remember { mutableStateOf(context.isGranted(Manifest.permission.CAMERA)) }
     var hasAudio by remember { mutableStateOf(context.isGranted(Manifest.permission.RECORD_AUDIO)) }
