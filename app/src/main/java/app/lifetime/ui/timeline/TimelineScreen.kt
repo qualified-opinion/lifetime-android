@@ -1,5 +1,9 @@
 package app.lifetime.ui.timeline
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.lifetime.LifetimeApp
@@ -102,8 +107,22 @@ fun TimelineScreen(
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 100),
     ) { uris -> vm.import(uris) }
-    val launchImport = {
+    val openPicker = {
         pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+    }
+    val mediaLocationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { _ -> openPicker() } // A denial still continues the import.
+    val launchImport = {
+        if (Build.VERSION.SDK_INT >= 29 && !vm.mediaLocationRequested &&
+            ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            vm.mediaLocationRequested = true
+            Toast.makeText(app, "Allow photo location access to keep saved locations when importing.", Toast.LENGTH_LONG).show()
+            mediaLocationPermission.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        } else {
+            openPicker()
+        }
     }
 
     // "Save as" dialog for the export zip, so the user chooses where it lands.

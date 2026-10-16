@@ -47,12 +47,14 @@ class CaptureExportTest {
             return id
         }
         override suspend fun delete(moment: Moment) { rows.remove(moment) }
-        override suspend fun updateLocation(id: Long, latitude: Double, longitude: Double) {
+        override suspend fun updateLocation(id: Long, latitude: Double, longitude: Double): Int {
             locationUpdates++
-            val row = get(id) ?: return
+            val row = get(id) ?: return 0
             if (row.latitude == null && row.longitude == null) {
                 rows[rows.indexOf(row)] = row.copy(latitude = latitude, longitude = longitude)
+                return 1
             }
+            return 0
         }
     }
 
@@ -155,6 +157,21 @@ class CaptureExportTest {
         } finally { f.scope.cancel() }
     }
 
+    @Test fun invalidCaptureLocationsDoNotReachTheDatabaseOrExif() = runBlocking {
+        var writes = 0
+        val f = Fixture(writePhotoLocation = { _, _ -> writes++ })
+        try {
+            listOf(0.0 to -0.0, Double.NaN to 12.0, 12.0 to Double.POSITIVE_INFINITY, 91.0 to 12.0).forEach { (lat, lon) ->
+                val vm = f.camera({ location(lat, lon) })
+                withTimeout(5_000) { vm.onCaptured(f.captureFile(MediaType.PHOTO), MediaType.PHOTO, 0).join() }
+            }
+            assertTrue(f.dao.rows.all { it.latitude == null && it.longitude == null })
+            assertEquals(0, f.dao.locationUpdates)
+            assertEquals(0, writes)
+            assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
     @Test fun photoLocationReachesTheDatabaseBeforeExifIsWritten() = runBlocking {
         lateinit var f: Fixture
         var writes = 0
@@ -198,6 +215,31 @@ class CaptureExportTest {
             assertArrayEquals(bytes, f.repository.fileFor(row).readBytes())
             assertFalse(temp.exists())
             assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun guardedLocationUpdateDoesNotWriteExifForAnAlreadyLocatedPhoto() = runBlocking {
+        var writes = 0
+        val f = Fixture(writePhotoLocation = { _, _ -> writes++ })
+        try {
+            val saved = f.repository.addCaptured(f.captureFile(MediaType.PHOTO), MediaType.PHOTO, 0)
+            f.dao.rows[0] = saved.copy(latitude = 56.0, longitude = 78.0)
+            f.repository.updateLocation(saved.id, location(12.0, 34.0))
+            assertEquals(0, writes)
+            assertEquals(saved.copy(latitude = 56.0, longitude = 78.0), f.dao.rows.single())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun guardedLocationUpdateDoesNotWriteExifForAPartiallyLocatedOrMissingPhoto() = runBlocking {
+        var writes = 0
+        val f = Fixture(writePhotoLocation = { _, _ -> writes++ })
+        try {
+            val saved = f.repository.addCaptured(f.captureFile(MediaType.PHOTO), MediaType.PHOTO, 0)
+            f.dao.rows[0] = saved.copy(latitude = 56.0)
+            f.repository.updateLocation(saved.id, location(12.0, 34.0))
+            f.repository.updateLocation(999, location(12.0, 34.0))
+            assertEquals(0, writes)
+            assertEquals(saved.copy(latitude = 56.0), f.dao.rows.single())
         } finally { f.scope.cancel() }
     }
 

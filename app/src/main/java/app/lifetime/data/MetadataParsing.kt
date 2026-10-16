@@ -1,10 +1,13 @@
 package app.lifetime.data
 
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
 
 /**
  * Pure parsing helpers for media metadata, kept free of Android classes so they can be
@@ -15,6 +18,11 @@ object MetadataParsing {
     private val EXIF_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")
     private val VIDEO_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
     private val ISO6709 = Regex("""([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)""")
+    private val COMPACT_DATE = DateTimeFormatter.ofPattern("uuuuMMdd").withResolverStyle(ResolverStyle.STRICT)
+    private val FILE_TIME = DateTimeFormatter.ofPattern("HHmmss").withResolverStyle(ResolverStyle.STRICT)
+    private val NAMED_TIMESTAMP = Regex("""(?:IMG_|PXL_|VID_)?(\d{8})_(\d{6})(?:\d{3}|_\d{3})?(?:\.[A-Za-z0-9]+)*""")
+    private val DASHED_TIMESTAMP = Regex("""(\d{4}-\d{2}-\d{2}) (\d{2}\.\d{2}\.\d{2})(?:\.[A-Za-z0-9]+)*""")
+    private val NAMED_DATE = Regex("""(?:(?:IMG_|PXL_|VID_)(\d{8})|(?:IMG|VID)-(\d{8})-WA\d{4})(?:\.[A-Za-z0-9]+)*""")
 
     /** 1 Jan 1971: anything earlier is a placeholder, not a real capture date. */
     const val MIN_PLAUSIBLE_DATE = 31_536_000_000L
@@ -51,8 +59,62 @@ object MetadataParsing {
         val match = ISO6709.find(value) ?: return null
         val lat = match.groupValues[1].toDoubleOrNull() ?: return null
         val lon = match.groupValues[2].toDoubleOrNull() ?: return null
-        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
-        return lat to lon
+        return validLocation(lat, lon)
+    }
+
+    /** Shared by ISO-6709 and the coordinates returned by the EXIF reader. */
+    fun validLocation(latitude: Double?, longitude: Double?): Pair<Double, Double>? {
+        if (latitude == null || longitude == null) return null
+        if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
+        if (latitude == 0.0 && longitude == 0.0) return null
+        return latitude to longitude
+    }
+
+    /** Known, complete filename dates, at most a day ahead; a date without a time uses local noon. */
+    fun parseDisplayName(
+        value: String?,
+        zone: ZoneId = ZoneId.systemDefault(),
+        now: Long = System.currentTimeMillis(),
+    ): Long? {
+        if (value.isNullOrBlank()) return null
+        return runCatching {
+            val timestamp = NAMED_TIMESTAMP.matchEntire(value)
+            val dashed = DASHED_TIMESTAMP.matchEntire(value)
+            val dateOnly = NAMED_DATE.matchEntire(value)
+            val local = when {
+                timestamp != null -> LocalDateTime.of(
+                    LocalDate.parse(timestamp.groupValues[1], COMPACT_DATE),
+                    LocalTime.parse(timestamp.groupValues[2], FILE_TIME),
+                )
+                dashed != null -> LocalDateTime.of(
+                    LocalDate.parse(dashed.groupValues[1]),
+                    LocalTime.parse(dashed.groupValues[2].replace('.', ':')),
+                )
+                dateOnly != null -> LocalDate.parse(
+                    dateOnly.groupValues[1].ifEmpty { dateOnly.groupValues[2] }, COMPACT_DATE,
+                ).atTime(12, 0)
+                else -> return null
+            }
+            local.atZone(zone).toInstant().toEpochMilli()
+        }.getOrNull()?.takeIf { it > MIN_PLAUSIBLE_DATE && it <= now + 86_400_000L }
+    }
+
+    data class ImportDate(val capturedAt: Long, val usedNow: Boolean)
+
+    fun importDate(
+        embedded: Long?,
+        providerTaken: List<Long>,
+        displayName: String?,
+        lastModified: Long?,
+        now: () -> Long = System::currentTimeMillis,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): ImportDate {
+        val importNow = now()
+        val found = embedded
+            ?: providerTaken.firstNotNullOfOrNull(::normaliseProviderDate)
+            ?: parseDisplayName(displayName, zone, importNow)
+            ?: lastModified?.let(::normaliseProviderDate)
+        return ImportDate(found ?: importNow, usedNow = found == null)
     }
 
     /**
