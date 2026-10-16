@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Photo
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.lifetime.LifetimeApp
@@ -61,6 +63,7 @@ import app.lifetime.data.Moment
 import app.lifetime.data.MomentSource
 import app.lifetime.ui.components.DarkSystemBars
 import app.lifetime.ui.components.Formatting
+import java.io.File
 
 /** Full-screen, swipeable viewer. Tap to hide/show the controls. */
 @Composable
@@ -104,6 +107,7 @@ private fun ViewerPager(
     var zoomed by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     val current = moments.getOrNull(pagerState.currentPage.coerceAtMost(moments.lastIndex))
     LaunchedEffect(pagerState.currentPage) { zoomed = false }
@@ -149,6 +153,11 @@ private fun ViewerPager(
                 Column(Modifier.weight(1f).padding(start = 4.dp)) {
                     Text(Formatting.shortDate(m.capturedAt), color = Color.White, style = MaterialTheme.typography.titleMedium)
                     Text(Formatting.time(m.capturedAt), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            current?.let { m ->
+                IconButton(onClick = { shareMoment(context, m, vm.fileFor(m)) }) {
+                    Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White)
                 }
             }
             IconButton(onClick = { showInfo = true }) {
@@ -248,4 +257,15 @@ private fun InfoRow(
             action?.invoke()
         }
     }
+}
+
+/** Sends one moment to another app (messages, mail, files) through the system share sheet. */
+private fun shareMoment(context: android.content.Context, moment: Moment, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = moment.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, null))
 }

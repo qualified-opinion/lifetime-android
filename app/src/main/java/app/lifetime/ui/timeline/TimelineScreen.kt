@@ -190,9 +190,14 @@ fun TimelineScreen(
             AnimatedVisibility(visible = busy != null, modifier = Modifier.align(Alignment.TopCenter)) {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Column(Modifier.fillMaxWidth()) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        val progress = busy?.progress
+                        if (progress != null) {
+                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        } else {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
                         Text(
-                            busy.orEmpty(),
+                            busy?.label.orEmpty(),
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )

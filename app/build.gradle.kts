@@ -37,6 +37,10 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        // Lets JVM tests touch android.* stubs (e.g. Log) without crashing.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 ksp {
@@ -75,4 +79,6 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
+
+    testImplementation(libs.junit)
 }
