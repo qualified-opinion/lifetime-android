@@ -27,6 +27,7 @@ import java.io.FilterOutputStream
 import java.io.IOException
 import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.zip.ZipFile
 
 class CaptureExportTest {
     @get:Rule val tmp = TemporaryFolder()
@@ -55,7 +56,10 @@ class CaptureExportTest {
         }
     }
 
-    private inner class Fixture(failFiling: Boolean = false) {
+    private inner class Fixture(
+        failFiling: Boolean = false,
+        writePhotoLocation: (File, Location) -> Unit = { _, _ -> },
+    ) {
         val dao = FakeDao()
         val incoming = File(tmp.root, "incoming")
         var filingThread: Thread? = null
@@ -64,7 +68,7 @@ class CaptureExportTest {
             if (failFiling) throw IOException("Forced filing failure")
             ZoneOffset.UTC
         }
-        val repository = MomentRepository(ContextWrapper(null), dao, storage, MediaMetadataReader())
+        val repository = MomentRepository(ContextWrapper(null), dao, storage, MediaMetadataReader(), writePhotoLocation)
         val unhandled = CopyOnWriteArrayList<Throwable>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> unhandled.add(e) })
 
@@ -72,7 +76,7 @@ class CaptureExportTest {
             repository, scope, MutableStateFlow(tagging), {}, location,
         )
 
-        fun captureFile() = repository.newCaptureFile(MediaType.VIDEO).apply {
+        fun captureFile(type: MediaType = MediaType.VIDEO) = repository.newCaptureFile(type).apply {
             // Large enough to flush the buffered zip during media copying.
             writeBytes(ByteArray(256 * 1024) { (it % 251).toByte() })
         }
@@ -122,7 +126,8 @@ class CaptureExportTest {
     }
 
     @Test fun lateLocationUpdatesTheSavedRow() = runBlocking {
-        val f = Fixture()
+        var exifWrites = 0
+        val f = Fixture(writePhotoLocation = { _, _ -> exifWrites++ })
         try {
             val vm = f.camera({
                 assertEquals(1, f.dao.rows.size)
@@ -132,6 +137,7 @@ class CaptureExportTest {
             assertEquals(12.0, f.dao.rows.single().latitude!!, 0.0)
             assertEquals(34.0, f.dao.rows.single().longitude!!, 0.0)
             assertEquals(1, f.dao.locationUpdates)
+            assertEquals(0, exifWrites)
         } finally { f.scope.cancel() }
     }
 
@@ -146,6 +152,52 @@ class CaptureExportTest {
             withTimeout(5_000) { vm.onCaptured(f.captureFile(), MediaType.VIDEO, 0).join() }
             assertEquals(56.0, f.dao.rows.single().latitude!!, 0.0)
             assertEquals(78.0, f.dao.rows.single().longitude!!, 0.0)
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun photoLocationReachesTheDatabaseBeforeExifIsWritten() = runBlocking {
+        lateinit var f: Fixture
+        var writes = 0
+        f = Fixture(writePhotoLocation = { file, location ->
+            val row = f.dao.rows.single()
+            assertEquals(12.0, row.latitude!!, 0.0)
+            assertEquals(34.0, row.longitude!!, 0.0)
+            assertEquals(f.repository.fileFor(row), file)
+            assertTrue(file.exists())
+            assertEquals(12.0, location.latitude, 0.0)
+            assertEquals(34.0, location.longitude, 0.0)
+            writes++
+        })
+        try {
+            val vm = f.camera({ location(12.0, 34.0) })
+            withTimeout(5_000) { vm.onCaptured(f.captureFile(MediaType.PHOTO), MediaType.PHOTO, 0).join() }
+            assertEquals(1, writes)
+            assertEquals(1, f.dao.locationUpdates)
+            assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun failingExifWriteKeepsTheSavedPhotoAndLocationRow() = runBlocking {
+        lateinit var f: Fixture
+        var rowBeforeExif: Moment? = null
+        f = Fixture(writePhotoLocation = { _, _ ->
+            rowBeforeExif = f.dao.rows.single()
+            throw IOException("EXIF write failed")
+        })
+        try {
+            val temp = f.captureFile(MediaType.PHOTO)
+            val bytes = temp.readBytes()
+            val saved = f.repository.addCaptured(temp, MediaType.PHOTO, 0)
+            f.repository.updateLocation(saved.id, location(12.0, 34.0))
+            val row = f.dao.rows.single()
+            assertNotNull(rowBeforeExif)
+            assertEquals(rowBeforeExif, row)
+            assertEquals(saved.copy(latitude = 12.0, longitude = 34.0), row)
+            assertEquals(12.0, row.latitude!!, 0.0)
+            assertEquals(34.0, row.longitude!!, 0.0)
+            assertArrayEquals(bytes, f.repository.fileFor(row).readBytes())
+            assertFalse(temp.exists())
+            assertTrue(f.unhandled.isEmpty())
         } finally { f.scope.cancel() }
     }
 
@@ -253,20 +305,49 @@ class CaptureExportTest {
         } finally { f.scope.cancel() }
     }
 
-    @Test fun missingSourceFailsExportAndDeletesTarget() = runBlocking {
+    @Test fun missingSourcesAreSkippedAndReportedInAValidExport() = runBlocking {
         val f = Fixture()
         try {
             val row = f.savedCapture()
-            f.repository.fileFor(row).delete()
+            val secondMissing = f.savedCapture()
+            val kept = f.savedCapture()
+            assertTrue(f.repository.fileFor(row).delete())
+            assertTrue(f.repository.fileFor(secondMissing).delete())
             val target = File(tmp.root, "export.zip")
             val vm = TimelineViewModel(f.repository, f.scope)
+            var deletionCalls = 0
+            val manifest = """{"version":1,"moments":[{"file":"media/${kept.relativePath}"}]}"""
             withTimeout(5_000) {
                 vm.export {
-                    f.repository.exportZip({ target.outputStream() }, { target.delete() })
+                    f.repository.exportZip(
+                        openTarget = { target.outputStream() },
+                        deleteTarget = { deletionCalls++; target.delete() },
+                        encodeIndex = { moments ->
+                            assertEquals(listOf(kept), moments)
+                            manifest.toByteArray()
+                        },
+                    ).also { assertEquals(MomentRepository.ExportResult(1, 2), it) }
                 }.join()
             }
-            assertTrue(withTimeout(5_000) { vm.messages.first() }.startsWith("Export failed:"))
-            assertFalse(target.exists())
+            assertEquals("Exported 1 moments (2 files were missing)", withTimeout(5_000) { vm.messages.first() })
+            assertEquals(0, deletionCalls)
+            assertTrue(target.exists())
+            ZipFile(target).use { zip ->
+                assertEquals(setOf("media/${kept.relativePath}", "moments.json"), zip.entries().asSequence().map { it.name }.toSet())
+                assertArrayEquals(f.repository.fileFor(kept).readBytes(), zip.getInputStream(zip.getEntry("media/${kept.relativePath}")).use { it.readBytes() })
+                assertEquals(manifest, zip.getInputStream(zip.getEntry("moments.json")).bufferedReader().use { it.readText() })
+            }
+            assertNull(vm.busy.value)
+            assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun exportSuccessOmitsMissingSuffixWhenNoFilesAreMissing() = runBlocking {
+        val f = Fixture()
+        try {
+            val vm = TimelineViewModel(f.repository, f.scope)
+            withTimeout(5_000) { vm.export { MomentRepository.ExportResult(41, 0) }.join() }
+            assertEquals("Exported 41 moments", withTimeout(5_000) { vm.messages.first() })
             assertNull(vm.busy.value)
         } finally { f.scope.cancel() }
     }

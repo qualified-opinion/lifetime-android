@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import android.webkit.MimeTypeMap
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -32,6 +33,9 @@ class MomentRepository(
     private val dao: MomentDao,
     private val storage: MediaStorage,
     private val metadataReader: MediaMetadataReader,
+    private val writePhotoLocation: (File, Location) -> Unit = { file, location ->
+        ExifInterface(file).apply { setGpsInfo(location); saveAttributes() }
+    },
 ) {
 
     val moments: Flow<List<Moment>> = dao.observeAll()
@@ -80,8 +84,14 @@ class MomentRepository(
         }
     }
 
-    suspend fun updateLocation(id: Long, location: Location) =
+    suspend fun updateLocation(id: Long, location: Location) = withContext(Dispatchers.IO) {
         dao.updateLocation(id, location.latitude, location.longitude)
+        val moment = dao.get(id)
+        if (moment?.type == MediaType.PHOTO) {
+            // Keep GPS in exported photos too; EXIF failure must not affect the saved row.
+            runCatching { writePhotoLocation(storage.fileFor(moment), location) }
+        }
+    }
 
     /**
      * Copies picked gallery items into the app. The original stays where it was.
@@ -160,24 +170,32 @@ class MomentRepository(
         dao.delete(moment)
     }
 
+    data class ExportResult(val exported: Int, val missing: Int)
+
     /**
      * Writes every file plus a moments.json index into a zip at [target] (a file the user
-     * picked with the system "save as" dialog). Returns the number of moments exported.
+     * picked with the system "save as" dialog). Returns exported and missing file counts.
      */
-    suspend fun exportZip(target: Uri): Int = exportZip(
+    suspend fun exportZip(target: Uri): ExportResult = exportZip(
         openTarget = { context.contentResolver.openOutputStream(target) },
         deleteTarget = { DocumentsContract.deleteDocument(context.contentResolver, target) },
     )
 
-    /** The callbacks also let JVM tests exercise failures from document providers. */
+    /** Callbacks let JVM tests exercise document providers without Android's JSON stubs. */
     internal suspend fun exportZip(
         openTarget: () -> OutputStream?,
         deleteTarget: () -> Boolean,
-    ): Int = try {
+        encodeIndex: (List<Moment>) -> ByteArray = { moments ->
+            val index = JSONArray()
+            moments.forEach { index.put(it.toJson()) }
+            JSONObject().put("version", 1).put("moments", index).toString(2).toByteArray()
+        },
+    ): ExportResult = try {
         withContext(Dispatchers.IO) {
             ensureActive()
             val all = dao.getAll()
-            val index = JSONArray()
+            val index = mutableListOf<Moment>()
+            var missing = 0
             val output = openTarget() ?: error("Cannot open export document")
             // ZipOutputStream.close() can throw while finishing, before closing its output.
             output.use {
@@ -187,6 +205,10 @@ class MomentRepository(
                     for (moment in all) {
                         ensureActive()
                         val file = storage.fileFor(moment)
+                        if (!file.exists()) {
+                            missing++
+                            continue
+                        }
                         zip.putNextEntry(ZipEntry("media/${moment.relativePath}").apply { time = moment.capturedAt })
                         file.inputStream().use { input ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -198,16 +220,16 @@ class MomentRepository(
                             }
                         }
                         zip.closeEntry()
-                        index.put(moment.toJson())
+                        index.add(moment)
                     }
                     zip.setLevel(Deflater.DEFAULT_COMPRESSION)
                     zip.putNextEntry(ZipEntry("moments.json"))
-                    zip.write(JSONObject().put("version", 1).put("moments", index).toString(2).toByteArray())
+                    zip.write(encodeIndex(index))
                     zip.closeEntry()
                 }
             }
             ensureActive() // Includes errors/cancellation while finishing and closing the zip.
-            index.length()
+            ExportResult(index.size, missing)
         }
     } catch (failure: Throwable) {
         // Also catches cancellation on the dispatch back to the caller after closing.

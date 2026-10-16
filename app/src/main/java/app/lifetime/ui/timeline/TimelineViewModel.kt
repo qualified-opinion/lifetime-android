@@ -67,11 +67,14 @@ class TimelineViewModel internal constructor(
 
     fun export(target: Uri) = export { repository.exportZip(target) }
 
-    internal fun export(writeZip: suspend () -> Int) = scope.launch {
+    internal fun export(writeZip: suspend () -> MomentRepository.ExportResult) = scope.launch {
         _busy.value = Busy("Exporting your timeline…")
         try {
             val exported = writeZip()
-            _messages.trySend("Exported $exported moments")
+            _messages.trySend(buildString {
+                append("Exported ${exported.exported} moments")
+                if (exported.missing > 0) append(" (${exported.missing} files were missing)")
+            })
         } catch (cancelled: CancellationException) {
             // The repository has finished cleanup; sending must also work in a cancelled scope.
             _messages.trySend("Export failed: ${cancelled.message ?: "Export cancelled"}")
