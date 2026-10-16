@@ -13,8 +13,23 @@ android {
         applicationId = "app.lifetime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // CI passes its run number so every signed build installs as an update.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = "0.1.0"
+    }
+
+    // Release signing comes from environment variables set by CI from GitHub secrets.
+    // Without them (e.g. a local build) the release APK is simply left unsigned.
+    val keystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -23,6 +38,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

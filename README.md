@@ -9,6 +9,14 @@ Every push builds a debug APK on GitHub Actions. Open the repository's
 [Releases](../../releases) page on your phone, download `lifetime-debug.apk` from the
 newest **Debug build**, and allow "install unknown apps" for your browser when asked.
 
+### Signed builds
+
+The `signed` CI job builds a release APK signed with the keystore in the repository
+secrets (keystore as base64, store password, key alias, key password). Builds from `main`
+are published as the **Lifetime (signed)** release; other branches publish a signed
+pre-release. The signed app (`app.lifetime`) installs alongside the debug app
+(`app.lifetime.debug`); they keep separate timelines.
+
 ## What's in the MVP
 
 - **Capture**: take a photo or record a short video (up to 60 s) in the app, with
