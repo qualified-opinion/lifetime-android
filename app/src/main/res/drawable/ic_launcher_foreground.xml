@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- sun -->
+    <path
+        android:fillColor="#FFE8C9A0"
+        android:pathData="M38,60 A16,16 0 0,1 70,60 Z" />
+    <!-- horizon -->
+    <path
+        android:fillColor="#FFE8C9A0"
+        android:pathData="M32,63h44v3h-44z" />
+    <!-- timeline dots -->
+    <path
+        android:fillColor="#FFA8C3B0"
+        android:pathData="M42,72m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M54,72m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M66,72m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+</vector>
