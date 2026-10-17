@@ -3,9 +3,9 @@ package app.lifetime.data
 import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.pm.ProviderInfo
 import android.database.Cursor
 import android.database.MatrixCursor
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
@@ -23,6 +23,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 import java.io.File
 import java.time.ZoneOffset
+import java.util.Base64
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28, 33], application = Application::class)
@@ -32,9 +33,9 @@ class DocumentImportTest {
     @Test fun selectedOriginalPhotoKeepsEmbeddedGpsDateAndBytesWithoutStoragePermission() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val original = tmp.newFile("original.jpg")
-        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
-        original.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
-        bitmap.recycle()
+        // A real tiny JPEG fixture, independent of Robolectric's simulated bitmap encoder.
+        val jpeg = javaClass.getResourceAsStream("/original-photo.jpg.base64")!!.bufferedReader().use { it.readText() }
+        original.writeBytes(Base64.getMimeDecoder().decode(jpeg))
         ExifInterface(original).apply {
             setLatLong(10.3157, 123.8854)
             setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, "2026:10:16 14:32:15")
@@ -44,6 +45,11 @@ class DocumentImportTest {
         val authority = "com.android.providers.media.documents"
         val selected = Uri.parse("content://$authority/document/image%3A12")
         val provider = OriginalPhotoProvider(original)
+        provider.attachInfo(context, ProviderInfo().apply {
+            this.authority = authority
+            exported = true
+            grantUriPermissions = true
+        })
         ShadowContentResolver.registerProviderInternal(authority, provider)
         val dao = TestDao()
         val storage = MediaStorage(File(tmp.root, "media"), File(tmp.root, "incoming")) { ZoneOffset.UTC }
@@ -51,7 +57,7 @@ class DocumentImportTest {
 
         val result = repository.import(listOf(selected))
 
-        assertEquals(MomentRepository.ImportResult(1, 0), result)
+        assertEquals("Original document should import with its embedded date", MomentRepository.ImportResult(1, 0), result)
         assertEquals(listOf(selected), provider.opened)
         val row = dao.rows.single()
         assertEquals(10.3157, row.latitude!!, 0.00001)

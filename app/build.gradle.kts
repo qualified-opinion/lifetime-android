@@ -41,6 +41,9 @@ android {
         // Lets JVM tests touch android.* stubs (e.g. Log) without crashing.
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
     }
 }
 

@@ -15,6 +15,7 @@ internal class OriginalMediaPicker : ActivityResultContract<Unit, List<Uri>>() {
 
     override fun createIntent(context: Context, input: Unit): Intent =
         documents.createIntent(context, arrayOf("image/*", "video/*")).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
             putExtra(Intent.EXTRA_LOCAL_ONLY, true)
         }
 
