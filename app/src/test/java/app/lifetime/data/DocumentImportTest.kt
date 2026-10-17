@@ -1,5 +1,6 @@
 package app.lifetime.data
 
+import android.Manifest
 import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -19,6 +20,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 import java.io.File
@@ -30,8 +32,26 @@ import java.util.Base64
 class DocumentImportTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    @Test fun selectedOriginalPhotoKeepsEmbeddedGpsDateAndBytesWithoutStoragePermission() = runBlocking {
+    @Test fun selectedOriginalPhotoKeepsEmbeddedGpsDateAndBytesWithoutStoragePermission() =
+        importSelectedOriginal(grantMediaLocation = false)
+
+    // With the permission, the original request goes to MediaStore first. When that cannot be
+    // resolved (here the fake provider answers no getMediaUri call), the selected document is read.
+    @Test fun originalRequestFailureFallsBackToSelectedDocument() =
+        importSelectedOriginal(grantMediaLocation = true)
+
+    @Test fun onlyMediaSourcesAreConvertedForOriginalAccess() {
+        val media = Uri.parse("content://media/external/images/media/12")
+        val mediaDocument = Uri.parse("content://$MEDIA_DOCUMENTS_AUTHORITY/document/image%3A12")
+        val localFile = Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADCIM%2Fa.jpg")
+        assertEquals(media, originalMediaUri(media) { error("Already a MediaStore item") })
+        assertEquals(media, originalMediaUri(mediaDocument) { media })
+        assertNull(originalMediaUri(localFile) { error("Must not convert other providers") })
+    }
+
+    private fun importSelectedOriginal(grantMediaLocation: Boolean) = runBlocking {
         val context = RuntimeEnvironment.getApplication()
+        if (grantMediaLocation) shadowOf(context).grantPermissions(Manifest.permission.ACCESS_MEDIA_LOCATION)
         val original = tmp.newFile("original.jpg")
         // A real tiny JPEG fixture, independent of Robolectric's simulated bitmap encoder.
         val jpeg = javaClass.getResourceAsStream("/original-photo.jpg.base64")!!.bufferedReader().use { it.readText() }
@@ -42,7 +62,7 @@ class DocumentImportTest {
             setAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL, "+08:00")
             saveAttributes()
         }
-        val authority = "com.android.providers.media.documents"
+        val authority = MEDIA_DOCUMENTS_AUTHORITY
         val selected = Uri.parse("content://$authority/document/image%3A12")
         val provider = OriginalPhotoProvider(original)
         provider.attachInfo(context, ProviderInfo().apply {

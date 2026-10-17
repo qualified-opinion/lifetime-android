@@ -12,7 +12,7 @@ Builder: Codex. Independent review by Claude Code or Grok Build and Jan's OK are
 
 ## Scope
 1. Use ACTION_OPEN_DOCUMENT for local photos/videos, preserving selected document URIs and existing read grants. No broad storage permission, no network, no database migration. The existing optional media-location permission request remains; denial still imports.
-2. Read document streams directly rather than converting document URIs to MediaStore. Retain optional require-original/fallback behavior for direct MediaStore sources.
+2. With media-location permission, ask MediaStore for the original of media documents (Files > Images/Recent) and direct MediaStore sources; on any failure read the selected document as is. Other document providers (for example Internal storage) are read directly.
 3. Use updated tap/zoom callbacks in photo pointer-input handlers. Restore toolbar visibility on a change of the displayed moment.
 4. Add Robolectric and Compose JVM test dependencies (test/debug only) so CI exercises the actual gesture and Android document/EXIF paths. No production runtime dependency is added.
 5. Record Jan's results accurately in the roadmap. Do not mark unspecified interruption scenarios as tested.
