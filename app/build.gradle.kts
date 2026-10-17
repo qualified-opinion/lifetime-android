@@ -13,8 +13,23 @@ android {
         applicationId = "app.lifetime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The release workflow sets these; local and debug builds keep the defaults.
+        versionCode = System.getenv("LIFETIME_VERSION_CODE")?.toInt() ?: 1
+        versionName = System.getenv("LIFETIME_VERSION_NAME") ?: "0.1.0"
+    }
+
+    // Release signing comes only from the environment (GitHub secrets), never from the repo.
+    // Without it, assembleRelease still builds an unsigned APK.
+    val releaseKeystore = System.getenv("LIFETIME_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("LIFETIME_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("LIFETIME_KEY_ALIAS")
+                keyPassword = System.getenv("LIFETIME_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -22,6 +37,7 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
