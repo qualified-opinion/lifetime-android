@@ -110,7 +110,11 @@ private fun ViewerPager(
     val context = LocalContext.current
 
     val current = moments.getOrNull(pagerState.currentPage.coerceAtMost(moments.lastIndex))
-    LaunchedEffect(pagerState.currentPage) { zoomed = false }
+    LaunchedEffect(current?.id) {
+        zoomed = false
+        // A photo must not inherit a video's auto-hidden controls (or a deleted page's state).
+        onChromeVisibleChange(true)
+    }
 
     HorizontalPager(
         state = pagerState,

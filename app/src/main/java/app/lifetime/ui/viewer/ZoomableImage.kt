@@ -1,7 +1,6 @@
 package app.lifetime.ui.viewer
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -17,6 +16,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -52,6 +52,10 @@ fun ZoomableImage(
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     val scope = rememberCoroutineScope()
+    // Pointer-input coroutines survive recomposition. Always call the latest callbacks,
+    // especially onTap, whose caller captures the current toolbar visibility.
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnZoomedChange by rememberUpdatedState(onZoomedChange)
 
     fun clamp(o: Offset, s: Float): Offset {
         val maxX = size.width * (s - 1f) / 2f
@@ -63,7 +67,7 @@ fun ZoomableImage(
         val wasZoomed = scale > 1f
         scale = newScale
         offset = clamp(newOffset, newScale)
-        if (wasZoomed != (scale > 1f)) onZoomedChange(scale > 1f)
+        if (wasZoomed != (scale > 1f)) currentOnZoomedChange(scale > 1f)
     }
 
     fun animateTo(targetScale: Float, targetOffset: Offset) {
@@ -87,7 +91,7 @@ fun ZoomableImage(
             .onSizeChanged { size = it }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onTap() },
+                    onTap = { currentOnTap() },
                     onDoubleTap = { tap ->
                         if (scale > 1f) {
                             animateTo(1f, Offset.Zero)
