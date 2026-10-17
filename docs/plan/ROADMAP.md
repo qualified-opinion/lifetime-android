@@ -14,7 +14,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | MVP | n/a | Capture, import, timeline, viewer, delete, zip export, optional location | Merged (PR #1, 2026-10-16) |
 | 1. Safe capture and export | `fix/safe-capture-export` | A capture or export can never silently lose data or leave junk | Merged (PR #3, `daac326`). Jan reports batch 1 and import/export working (2026-10-17); individual interruption scenarios not separately recorded. Pack: `handoffs/batch1-safe-capture-export.md` |
 | 2. Import dates and location | `fix/import-date-gps` | Date fallback chain, `ACCESS_MEDIA_LOCATION`, reject 0,0, no orphan files, honest import message | Merged (PR #4, `c54cc12`). Jan reports dates correct and camera GPS working, but imported photo GPS missing; follow-up below. Pack: `handoffs/batch2-import-dates-gps.md`, review: `reviews/pr4-claude-review.md` |
-| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Implemented on feature branch; CI and independent review pending. Pack: `handoffs/import-location-viewer-controls.md` |
+| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Implemented in draft PR #6; independent review and phone retest pending. See PR checks for CI results. Pack: `handoffs/import-location-viewer-controls.md` |
 | 3. Guardrails: lint, R8 and CI | not started | see below | Needs a handoff pack and the owner's go |
 | 4. Privacy hardening | not started | see below | Needs a handoff pack and the owner's go |
 
