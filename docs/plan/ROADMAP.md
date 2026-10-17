@@ -58,7 +58,7 @@ Open the repo in Claude Code (it reads `CLAUDE.md`, which points to `AGENTS.md`)
 ## Open verification
 Jan reported on 2026-10-17: batch 1 works, import/export works, dates are correct, and camera location works. Imported gallery photos lose location; photo viewer controls cannot be restored after hiding. Phone model, Android version and installed build were not supplied.
 
-Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS and repeated toolbar toggling both work. The checks were:
+Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS and repeated toolbar toggling both work. The retest list (only the first two are confirmed):
 - Import a known geotagged original through Files (prefer local `DCIM/Camera`); confirm coordinates in Details and the exported photo. Gallery-only or already-stripped metadata cannot be reconstructed.
 - Tap a photo repeatedly to hide/show the toolbar; check Share, Info and Delete remain reachable. Check double-tap/pinch zoom and swiping between photos and videos.
 - Confirm date ordering, multi-select import and ordinary import/export still work.
