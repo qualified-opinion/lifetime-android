@@ -1,0 +1,90 @@
+name: Signed release
+
+# The owner starts this from the Actions tab ("Run workflow") on main. Pull requests that
+# touch the release setup build an unsigned release APK so problems show up before then.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version name, for example 0.2.0"
+        required: true
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "app/build.gradle.kts"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check inputs and signing secrets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.LIFETIME_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.LIFETIME_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.LIFETIME_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.LIFETIME_KEY_PASSWORD }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Run the signed release from main."; exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 0.2.0."; exit 1
+          fi
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing secret LIFETIME_$name (Settings > Secrets and variables > Actions)."; exit 1
+            fi
+          done
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Release v$VERSION already exists. Pick a new version."; exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "LIFETIME_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "LIFETIME_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          # Each run gets a higher version code, so a new release installs over the old one.
+          echo "LIFETIME_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        shell: bash
+
+      - name: Unit tests and release APK
+        env:
+          LIFETIME_KEYSTORE_PASSWORD: ${{ secrets.LIFETIME_KEYSTORE_PASSWORD }}
+          LIFETIME_KEY_ALIAS: ${{ secrets.LIFETIME_KEY_ALIAS }}
+          LIFETIME_KEY_PASSWORD: ${{ secrets.LIFETIME_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
+
+      - name: Verify signature
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
+          cp app/build/outputs/apk/release/app-release.apk "lifetime-${{ inputs.version }}.apk"
+
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" "lifetime-$VERSION.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Lifetime $VERSION" \
+            --notes "Signed release $VERSION from ${GITHUB_SHA::7}. Install over an earlier signed release to keep your timeline."
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
