@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-17, after Jan's phone testing. Import GPS and viewer controls follow-up prepared from `284c719`; batches 3 and 4 are not started.
+**Last updated:** 2026-10-17, after Jan's phone testing. Import GPS and viewer controls follow-up (PR #6) reviewed and phone-tested, merging; batches 3 and 4 are not started.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 1), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -14,7 +14,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | MVP | n/a | Capture, import, timeline, viewer, delete, zip export, optional location | Merged (PR #1, 2026-10-16) |
 | 1. Safe capture and export | `fix/safe-capture-export` | A capture or export can never silently lose data or leave junk | Merged (PR #3, `daac326`). Jan reports batch 1 and import/export working (2026-10-17); individual interruption scenarios not separately recorded. Pack: `handoffs/batch1-safe-capture-export.md` |
 | 2. Import dates and location | `fix/import-date-gps` | Date fallback chain, `ACCESS_MEDIA_LOCATION`, reject 0,0, no orphan files, honest import message | Merged (PR #4, `c54cc12`). Jan reports dates correct and camera GPS working, but imported photo GPS missing; follow-up below. Pack: `handoffs/batch2-import-dates-gps.md`, review: `reviews/pr4-claude-review.md` |
-| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Implemented in draft PR #6; independent review and phone retest pending. See PR checks for CI results. Pack: `handoffs/import-location-viewer-controls.md` |
+| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | PR #6: reviewed by Claude Code (added MediaStore original access for Images/Recent picks, `86f31e3`); Jan confirmed imported GPS and toolbar toggling work on his phone (2026-10-17). Pack: `handoffs/import-location-viewer-controls.md` |
 | 3. Guardrails: lint, R8 and CI | not started | see below | Needs a handoff pack and the owner's go |
 | 4. Privacy hardening | not started | see below | Needs a handoff pack and the owner's go |
 
@@ -58,7 +58,7 @@ Open the repo in Claude Code (it reads `CLAUDE.md`, which points to `AGENTS.md`)
 ## Open verification
 Jan reported on 2026-10-17: batch 1 works, import/export works, dates are correct, and camera location works. Imported gallery photos lose location; photo viewer controls cannot be restored after hiding. Phone model, Android version and installed build were not supplied.
 
-Retest the follow-up build:
+Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS and repeated toolbar toggling both work. The checks were:
 - Import a known geotagged original through Files (prefer local `DCIM/Camera`); confirm coordinates in Details and the exported photo. Gallery-only or already-stripped metadata cannot be reconstructed.
 - Tap a photo repeatedly to hide/show the toolbar; check Share, Info and Delete remain reachable. Check double-tap/pinch zoom and swiping between photos and videos.
 - Confirm date ordering, multi-select import and ordinary import/export still work.
