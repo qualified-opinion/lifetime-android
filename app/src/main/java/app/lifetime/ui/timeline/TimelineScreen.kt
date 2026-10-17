@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -103,12 +102,13 @@ fun TimelineScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
-    // The system photo picker: no storage permission needed, works back to API 26.
+    // The Files picker grants access to original documents. Photo-picker copies can
+    // redact GPS even when ACCESS_MEDIA_LOCATION has already been granted.
     val pickMedia = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 100),
+        OriginalMediaPicker(),
     ) { uris -> vm.import(uris) }
     val openPicker = {
-        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        pickMedia.launch(Unit)
     }
     val mediaLocationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -118,7 +118,7 @@ fun TimelineScreen(
             ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED
         ) {
             vm.mediaLocationRequested = true
-            Toast.makeText(app, "Allow photo location access to keep saved locations when importing.", Toast.LENGTH_LONG).show()
+            Toast.makeText(app, "To keep photo locations, allow access if asked, then select the original files.", Toast.LENGTH_LONG).show()
             mediaLocationPermission.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
         } else {
             openPicker()
@@ -162,7 +162,7 @@ fun TimelineScreen(
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Import from gallery") },
+                            text = { Text("Import photos and videos") },
                             leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) },
                             onClick = { menuOpen = false; launchImport() },
                         )
@@ -183,7 +183,7 @@ fun TimelineScreen(
             if (state.totalMoments > 0) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SmallFloatingActionButton(onClick = launchImport) {
-                        Icon(Icons.Outlined.PhotoLibrary, contentDescription = "Import from gallery")
+                        Icon(Icons.Outlined.PhotoLibrary, contentDescription = "Import photos and videos")
                     }
                     ExtendedFloatingActionButton(
                         onClick = onOpenCamera,
@@ -367,7 +367,7 @@ private fun EmptyTimeline(onCapture: () -> Unit, onImport: () -> Unit) {
         TextButton(onClick = onImport) {
             Icon(Icons.Outlined.PhotoLibrary, null)
             Spacer(Modifier.size(8.dp))
-            Text("Import from gallery")
+            Text("Import photos and videos")
         }
     }
 }

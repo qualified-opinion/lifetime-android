@@ -13,7 +13,8 @@ newest **Debug build**, and allow "install unknown apps" for your browser when a
 
 - **Capture**: take a photo or record a short video (up to 60 s) in the app, with
   front/back camera, tap to focus and pinch to zoom.
-- **Import**: pick existing photos and videos with the system photo picker. The original
+- **Import**: select original photos and videos with the system Files picker. Choose local files
+  (for example, `DCIM/Camera`) to retain embedded GPS; some gallery providers strip it. The original
   date is read from EXIF / video metadata so old photos land on the right day.
 - **Timeline**: newest first, grouped by year, month (sticky header) and day, with a
   date picker to jump anywhere. Videos show a play badge and their length.

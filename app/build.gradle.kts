@@ -40,6 +40,10 @@ android {
     testOptions {
         // Lets JVM tests touch android.* stubs (e.g. Log) without crashing.
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
     }
 }
 
@@ -81,4 +85,8 @@ dependencies {
     implementation(libs.coil.video)
 
     testImplementation(libs.junit)
+    // Exercise actual Compose gestures and document/EXIF reads in JVM CI without an emulator.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
