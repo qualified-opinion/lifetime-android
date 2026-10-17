@@ -1,17 +1,12 @@
 package app.lifetime.data
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.Location
 import android.net.Uri
-import android.os.Build
 import android.provider.DocumentsContract
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
 import android.webkit.MimeTypeMap
-import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -144,21 +139,7 @@ class MomentRepository(
 
         return importOne(
             mime, type, extension,
-            openSource = {
-                openOriginalOrPlain(
-                    useOriginal = Build.VERSION.SDK_INT >= 29 &&
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED,
-                    openOriginal = {
-                        val mediaUri = when {
-                            uri.authority == MediaStore.AUTHORITY -> uri
-                            DocumentsContract.isDocumentUri(context, uri) -> MediaStore.getMediaUri(context, uri)
-                            else -> null
-                        }
-                        mediaUri?.let { resolver.openInputStream(MediaStore.setRequireOriginal(it)) }
-                    },
-                    openPlain = { resolver.openInputStream(uri) },
-                )
-            },
+            openSource = { openMediaSource(context, uri) },
             readDate = { meta ->
                 val provider = providerMetadata(uri)
                 MetadataParsing.importDate(meta.takenAt, provider.taken, provider.name, provider.lastModified)
