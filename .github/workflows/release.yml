@@ -34,10 +34,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-          KEYSTORE_BASE64: ${{ secrets.LIFETIME_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.LIFETIME_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.LIFETIME_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.LIFETIME_KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ "$GITHUB_REF_NAME" != "main" ]; then
             echo "::error::Run the signed release from main."; exit 1
@@ -45,11 +45,14 @@ jobs:
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Version must look like 0.2.0."; exit 1
           fi
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing secret LIFETIME_$name (Settings > Secrets and variables > Actions)."; exit 1
-            fi
-          done
+          missing=""
+          [ -n "$KEYSTORE_BASE64" ] || missing="$missing RELEASE_KEYSTORE_BASE64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing STORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing (Settings > Secrets and variables > Actions)."; exit 1
+          fi
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "::error::Release v$VERSION already exists. Pick a new version."; exit 1
           fi
@@ -62,9 +65,9 @@ jobs:
 
       - name: Unit tests and release APK
         env:
-          LIFETIME_KEYSTORE_PASSWORD: ${{ secrets.LIFETIME_KEYSTORE_PASSWORD }}
-          LIFETIME_KEY_ALIAS: ${{ secrets.LIFETIME_KEY_ALIAS }}
-          LIFETIME_KEY_PASSWORD: ${{ secrets.LIFETIME_KEY_PASSWORD }}
+          LIFETIME_KEYSTORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          LIFETIME_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          LIFETIME_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
 
       - name: Verify signature
