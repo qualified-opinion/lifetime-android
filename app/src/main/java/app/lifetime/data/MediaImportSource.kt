@@ -20,7 +20,9 @@ internal fun openMediaSource(context: Context, uri: Uri): InputStream? {
         useOriginal = Build.VERSION.SDK_INT >= 29 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED,
         openOriginal = {
-            originalMediaUri(uri) { MediaStore.getMediaUri(context, it) }
+            // useOriginal already checks the API level; repeated here so lint can see it.
+            if (Build.VERSION.SDK_INT < 29) null
+            else originalMediaUri(uri) { MediaStore.getMediaUri(context, it) }
                 ?.let { resolver.openInputStream(MediaStore.setRequireOriginal(it)) }
         },
         openPlain = { resolver.openInputStream(uri) },
