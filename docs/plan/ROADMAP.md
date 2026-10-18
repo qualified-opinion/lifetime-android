@@ -23,7 +23,8 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 ## Captions (next)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
 - After a photo or video, an optional "Add a caption" bar appears above the shutter. Skipping it changes nothing, so shooting in a row still works.
-- The caption shows at the bottom of the viewer and can be added, edited or cleared there for any moment, imported ones included. Thumbnails with a caption get a small marker.
+- The caption shows at the bottom of the viewer and can be added, edited or cleared there for any moment, imported ones included.
+- In the timeline, a captioned moment shows like a post: the photo full width with its caption under it, in time order among that day's grid photos.
 - Stored in a new nullable `caption` column (Room v2, manual migration, `MigrationTest`) and written to `moments.json` on export. The media file is never rewritten.
 - Out of scope: writing captions into EXIF, hashtags or sharing, caption search, restore from export.
 
