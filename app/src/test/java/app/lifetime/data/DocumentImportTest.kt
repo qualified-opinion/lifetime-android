@@ -113,6 +113,7 @@ class DocumentImportTest {
         override suspend fun get(id: Long) = rows.find { it.id == id }
         override suspend fun insert(moment: Moment): Long = (rows.size + 1L).also { rows.add(moment.copy(id = it)) }
         override suspend fun updateLocation(id: Long, latitude: Double, longitude: Double) = 0
+        override suspend fun updateCaption(id: Long, caption: String?) = 0
         override suspend fun delete(moment: Moment) { rows.remove(moment) }
     }
 }

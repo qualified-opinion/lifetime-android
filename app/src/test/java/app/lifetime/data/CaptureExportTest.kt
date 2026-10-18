@@ -47,6 +47,11 @@ class CaptureExportTest {
             return id
         }
         override suspend fun delete(moment: Moment) { rows.remove(moment) }
+        override suspend fun updateCaption(id: Long, caption: String?): Int {
+            val row = get(id) ?: return 0
+            rows[rows.indexOf(row)] = row.copy(caption = caption)
+            return 1
+        }
         override suspend fun updateLocation(id: Long, latitude: Double, longitude: Double): Int {
             locationUpdates++
             val row = get(id) ?: return 0
@@ -240,6 +245,25 @@ class CaptureExportTest {
             f.repository.updateLocation(999, location(12.0, 34.0))
             assertEquals(0, writes)
             assertEquals(saved.copy(latitude = 56.0), f.dao.rows.single())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun captionChangesOnlyTheRowNeverTheFile() = runBlocking {
+        val f = Fixture()
+        try {
+            val row = f.savedCapture()
+            val bytes = f.repository.fileFor(row).readBytes()
+
+            assertTrue(f.repository.setCaption(row.id, "  First day at the lake\n\nCold water!  "))
+            assertEquals("First day at the lake\n\nCold water!", f.dao.rows.single().caption)
+            assertTrue(f.repository.setCaption(row.id, "Edited"))
+            assertEquals("Edited", f.dao.rows.single().caption)
+            assertTrue(f.repository.setCaption(row.id, "   "))
+            assertNull(f.dao.rows.single().caption)
+
+            assertEquals(row.copy(caption = null), f.dao.rows.single())
+            assertArrayEquals(bytes, f.repository.fileFor(row).readBytes())
+            assertFalse(f.repository.setCaption(999, "Gone"))
         } finally { f.scope.cancel() }
     }
 

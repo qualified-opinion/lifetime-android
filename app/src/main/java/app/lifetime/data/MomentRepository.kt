@@ -237,6 +237,14 @@ class MomentRepository(
         dao.delete(moment)
     }
 
+    /**
+     * Sets, changes or clears (blank text) the caption of moment [id]. Only the row changes;
+     * the media file is never touched. Returns false if the moment no longer exists.
+     */
+    suspend fun setCaption(id: Long, text: String?): Boolean = withContext(Dispatchers.IO) {
+        dao.updateCaption(id, Captions.normalize(text)) > 0
+    }
+
     data class ExportResult(val exported: Int, val missing: Int)
 
     /**
@@ -330,6 +338,7 @@ class MomentRepository(
         if (width > 0) put("width", width)
         if (height > 0) put("height", height)
         if (durationMs > 0) put("durationMs", durationMs)
+        caption?.let { put("caption", it) }
     }
 
     /** Called on start-up to drop half-written captures. */

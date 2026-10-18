@@ -1,9 +1,9 @@
 # Batch: captions on moments
 
 Repo: qualified-opinion/lifetime-android, from main `238c54e`.
-Branch: `feat/captions`.
-Owner request: Jan asked on 2026-10-18 for a way to write a description right after taking a picture, "just like a social media post", because Lifetime is meant to replace social media. This pack is the plan; building starts only after Jan says go.
-Builder: Codex or Claude Code. Independent review by a different engine and Jan's OK are still required before merge.
+Branch: `claude/project-thread-vv7hb1` (PR #9; the plan and the build are in the same PR).
+Owner request: Jan asked on 2026-10-18 for a way to write a description right after taking a picture, "just like a social media post", because Lifetime is meant to replace social media, and for the text to be visible in the timeline. He said go the same day.
+Builder: Claude Code. Independent review by a different engine and Jan's OK are still required before merge.
 
 ## Goal
 Every photo or video can carry a short text, written right after capture or added later, shown with the moment in the viewer and kept in the export. Writing a caption never puts the capture itself at risk.
@@ -11,14 +11,14 @@ Every photo or video can carry a short text, written right after capture or adde
 ## What Jan will see
 1. Take a photo or finish a video. A small "Add a caption" bar slides up above the shutter, showing the new capture's thumbnail. Tap it to open a text box; tap away or take another shot to skip. Nothing is forced: shooting several photos in a row works as today.
 2. In the text box, type freely (several lines are fine) and tap **Save**. The caption is stored with that moment.
-3. In the viewer, the caption sits at the bottom of the photo or video, above the toolbar, and hides and shows with the toolbar. Long captions show three lines with "more" to expand.
+3. In the viewer, the caption sits at the bottom of the photo or video, above the toolbar, and hides and shows with the toolbar. Long captions show three lines ending in "…"; tap the text to expand it.
 4. A pencil (or "Add caption" when empty) in the viewer edits the caption of any moment, including imported ones and older ones. Clearing the text removes the caption.
 5. In the timeline, a moment with a caption shows like a post: the photo or video full width, with the caption written under it (up to four lines, then "…"; tap opens the viewer with the full text). Moments without a caption stay in the day's photo grid as today. Within a day, everything keeps its time order, so a post sits between the grid photos taken before and after it.
 6. **Export everything** includes each caption in `moments.json`.
 
 ## Scope
 1. **Room v2.** Add a nullable `caption TEXT` column to `moments`. Bump `LifetimeDatabase` to version 2 with a manual `MIGRATION_1_2` (`ALTER TABLE moments ADD COLUMN caption TEXT`), register it in `create()`, and commit `app/schemas/.../2.json`. No destructive fallback. This is the app's first migration.
-2. **Migration test.** Add `MigrationTest` that creates a v1 database with a row, runs `MIGRATION_1_2` with `MigrationTestHelper`, and checks the row survives with `caption` null. Add `androidx.room:room-testing` as a test-only dependency (reason: required to test the migration the rules demand); run it under Robolectric so CI covers it in `testDebugUnitTest`. Add `app/schemas` to the test assets so the helper can read the schema JSON.
+2. **Migration test.** Add `MigrationTest` (Robolectric, so CI runs it in `testDebugUnitTest`) that builds a v1 database by hand from the v1 schema with a row in it, opens it with the real `LifetimeDatabase` and `MIGRATION_1_2`, and checks the row survives with `caption` null. Room validates the migrated table against the v2 entity on open, so a wrong migration fails the test. This needs no new dependency (`room-testing`'s `MigrationTestHelper` was the alternative).
 3. **Data layer.** `MomentDao.updateCaption(id, caption)`; `MomentRepository.setCaption(id, text)` trims the text, stores null for blank, and caps length at 2,000 characters (enforced in a plain Kotlin `Captions.normalize()` with JVM tests). Saving a caption is a single row update: it never touches the media file, so the file/row safety rules are unaffected.
 4. **Camera.** After `addCaptured` succeeds, show the "Add a caption" bar for `lastCapture`. The caption sheet saves through `setCaption` on the app scope so closing the camera right after Save still stores it. The draft text uses `rememberSaveable` so a rotation does not lose it. A failed save shows "Couldn't save the caption" and keeps the draft open. The capture is already in the timeline before the bar appears; skipping the caption changes nothing.
 5. **Viewer.** Show the caption overlay (scrim for legibility, three-line collapse), and an edit action that opens the same caption sheet. Info sheet gets a "Caption" row only if that reads better on the phone; not required.
@@ -38,8 +38,9 @@ Every photo or video can carry a short text, written right after capture or adde
 - A v1 database with existing moments upgrades to v2 with every row intact and `caption` null (`MigrationTest`).
 - `Captions.normalize()`: trims, blank becomes null, keeps inner newlines, caps at 2,000 characters (JVM tests).
 - Repository: setting, editing and clearing a caption updates only that row; the media file's bytes are unchanged (JVM test with the existing fakes).
+- Export: tested with real Room and JSON under Robolectric (`CaptionStorageTest`).
 - `buildTimeline` (JVM tests): a captioned moment becomes a `Post` row in time order; uncaptioned moments around it keep the 1/2/4/3 layout rules; a day with no captions builds exactly as today; `dayIndex` still points at each day header.
-- Export: a moment with a caption has `"caption"` in `moments.json`; one without has no key (extend `CaptureExportTest`).
+- Export: a moment with a caption has `"caption"` in `moments.json`; one without has no key.
 - `./gradlew --no-daemon testDebugUnitTest assembleDebug` passes in CI.
 - On Jan's phone, on top of an existing install with moments (debug build): moments are still there after the update; take a photo, add a caption, see it in the viewer; see the caption under the photo in the timeline, in the right place among that day's photos; take three photos in a row without captioning; edit and clear a caption on an imported photo; export and find the caption in `moments.json`.
 

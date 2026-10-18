@@ -24,6 +24,11 @@ sealed interface TimelineRow {
     data class Grid(val date: LocalDate, val index: Int, val moments: List<Moment>, val columns: Int) : TimelineRow {
         override val key = "g$date-$index"
     }
+
+    /** A moment with a caption, shown like a post: full width with its words under it. */
+    data class Post(val date: LocalDate, val moment: Moment) : TimelineRow {
+        override val key = "p${moment.id}"
+    }
 }
 
 data class TimelineState(
@@ -37,9 +42,10 @@ data class TimelineState(
 /**
  * Turns a newest-first list of moments into year / month / day sections.
  *
- * Layout per day: one moment shows large, two sit side by side, four make a 2x2,
- * anything else flows in rows of three. Varying it keeps the feed from feeling like a grid
- * of identical tiles.
+ * Layout per day: a captioned moment is a [TimelineRow.Post]. The uncaptioned moments between
+ * posts form grids: one shows large, two sit side by side, four make a 2x2, anything else flows
+ * in rows of three. Varying it keeps the feed from feeling like a grid of identical tiles.
+ * Everything stays in time order.
  */
 fun buildTimeline(moments: List<Moment>): TimelineState {
     val rows = ArrayList<TimelineRow>()
@@ -61,15 +67,29 @@ fun buildTimeline(moments: List<Moment>): TimelineState {
         dayIndex += date to rows.size
         rows += TimelineRow.Day(date, items.size)
 
-        val chunks = when (items.size) {
-            1 -> listOf(items to 1)
-            2 -> listOf(items to 2)
-            4 -> items.chunked(2).map { it to 2 }
-            else -> items.chunked(3).map { it to 3 }
+        var gridIndex = 0
+        val run = ArrayList<Moment>()
+        fun flushGrid() {
+            gridChunks(run).forEach { (chunk, columns) -> rows += TimelineRow.Grid(date, gridIndex++, chunk, columns) }
+            run.clear()
         }
-        chunks.forEachIndexed { i, (chunk, columns) ->
-            rows += TimelineRow.Grid(date, i, chunk, columns)
+        for (moment in items) {
+            if (moment.caption == null) {
+                run += moment
+            } else {
+                flushGrid()
+                rows += TimelineRow.Post(date, moment)
+            }
         }
+        flushGrid()
     }
     return TimelineState(rows = rows, dayIndex = dayIndex, totalMoments = moments.size, loading = false)
+}
+
+private fun gridChunks(items: List<Moment>): List<Pair<List<Moment>, Int>> = when (items.size) {
+    0 -> emptyList()
+    1 -> listOf(items.toList() to 1)
+    2 -> listOf(items.toList() to 2)
+    4 -> items.chunked(2).map { it to 2 }
+    else -> items.chunked(3).map { it to 3 }
 }

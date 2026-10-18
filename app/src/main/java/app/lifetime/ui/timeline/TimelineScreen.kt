@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +67,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -310,6 +312,9 @@ private fun TimelineList(
                 is TimelineRow.Grid -> item(key = row.key, contentType = "grid${row.columns}") {
                     GridRow(row, fileFor, onOpenMoment)
                 }
+                is TimelineRow.Post -> item(key = row.key, contentType = "post") {
+                    PostRow(row.moment, fileFor(row.moment)) { onOpenMoment(row.moment.id) }
+                }
             }
         }
     }
@@ -332,6 +337,31 @@ private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File, onOpenMome
         }
         // Keep cells the same size when the last row of a day isn't full.
         repeat(row.columns - row.moments.size) { Spacer(Modifier.weight(1f)) }
+    }
+}
+
+/** A captioned moment: the photo or video at full width (in its own shape, within limits), its words under it. */
+@Composable
+private fun PostRow(moment: Moment, file: File, onOpen: () -> Unit) {
+    val ratio = if (moment.width > 0 && moment.height > 0) {
+        (moment.width.toFloat() / moment.height).coerceIn(4f / 5f, 16f / 9f)
+    } else {
+        4f / 3f
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
+        MomentThumbnail(
+            moment = moment,
+            file = file,
+            onClick = onOpen,
+            modifier = Modifier.fillMaxWidth().aspectRatio(ratio),
+        )
+        Text(
+            moment.caption.orEmpty(),
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 6.dp, vertical = 8.dp),
+        )
     }
 }
 

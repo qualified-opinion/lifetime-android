@@ -3,7 +3,7 @@
 Start with `docs/plan/ROADMAP.md`: it says what is done, what is next and how work is run.
 
 ## Project
-Private, offline-first Android timeline of photos and videos. Kotlin, Compose (Material 3), Room (version 1), CameraX, Media3, Coil. Package `app.lifetime`. See `README.md` for the layout.
+Private, offline-first Android timeline of photos and videos. Kotlin, Compose (Material 3), Room (version 2), CameraX, Media3, Coil. Package `app.lifetime`. See `README.md` for the layout.
 
 ## Rules
 - No `INTERNET` permission, no analytics, no cloud. No storage permission either: media lives in app-private storage.

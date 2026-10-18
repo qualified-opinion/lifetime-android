@@ -25,7 +25,7 @@ class TimelineModelTest {
     fun restoreZone() = TimeZone.setDefault(originalZone)
 
     private var nextId = 1L
-    private fun moment(iso: String) = Moment(
+    private fun moment(iso: String, caption: String? = null) = Moment(
         id = nextId++,
         type = MediaType.PHOTO,
         source = MomentSource.CAMERA,
@@ -33,6 +33,7 @@ class TimelineModelTest {
         mimeType = "image/jpeg",
         capturedAt = Instant.parse(iso).toEpochMilli(),
         addedAt = 0,
+        caption = caption,
     )
 
     @Test
@@ -79,6 +80,50 @@ class TimelineModelTest {
     @Test
     fun dayIndexPointsAtDayHeaders() {
         val state = buildTimeline(listOf(moment("2026-10-16T10:00:00Z"), moment("2026-09-01T10:00:00Z")))
+        state.dayIndex.forEach { (date, index) ->
+            assertEquals(date, (state.rows[index] as TimelineRow.Day).date)
+        }
+    }
+
+    @Test
+    fun captionedMomentsBecomePostsInTimeOrder() {
+        val moments = listOf(
+            moment("2026-10-16T18:00:00Z"),
+            moment("2026-10-16T17:00:00Z"),
+            moment("2026-10-16T16:00:00Z", caption = "Sunset at the lake"),
+            moment("2026-10-16T15:00:00Z"),
+            moment("2026-10-16T14:00:00Z", caption = "Lunch"),
+        )
+        val rows = buildTimeline(moments).rows
+        assertEquals(listOf("Year", "Month", "Day", "Grid", "Post", "Grid", "Post"), rows.map { it::class.simpleName })
+
+        val grids = rows.filterIsInstance<TimelineRow.Grid>()
+        assertEquals(listOf(2, 1), grids.map { it.columns })
+        assertEquals(listOf(moments[0], moments[1]), grids[0].moments)
+        assertEquals(listOf(moments[3]), grids[1].moments)
+        assertEquals(listOf(moments[2], moments[4]), rows.filterIsInstance<TimelineRow.Post>().map { it.moment })
+
+        // Keys must stay unique for the LazyColumn.
+        assertEquals(rows.size, rows.map { it.key }.toSet().size)
+        assertEquals(5, rows.filterIsInstance<TimelineRow.Day>().single().count)
+    }
+
+    @Test
+    fun dayWithOnlyCaptionsHasNoGrid() {
+        val rows = buildTimeline(listOf(moment("2026-10-16T10:00:00Z", caption = "One"), moment("2026-10-16T09:00:00Z", caption = "Two"))).rows
+        assertEquals(listOf("Year", "Month", "Day", "Post", "Post"), rows.map { it::class.simpleName })
+    }
+
+    @Test
+    fun dayIndexStillPointsAtDayHeadersWithPosts() {
+        val state = buildTimeline(
+            listOf(
+                moment("2026-10-16T10:00:00Z", caption = "Hi"),
+                moment("2026-10-16T09:00:00Z"),
+                moment("2026-09-01T10:00:00Z", caption = "Older"),
+            ),
+        )
+        assertEquals(2, state.dayIndex.size)
         state.dayIndex.forEach { (date, index) ->
             assertEquals(date, (state.rows[index] as TimelineRow.Day).date)
         }

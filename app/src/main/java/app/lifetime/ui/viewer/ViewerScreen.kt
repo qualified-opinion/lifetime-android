@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,10 +24,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.LocationOn
@@ -43,6 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +69,7 @@ import app.lifetime.LifetimeApp
 import app.lifetime.data.MediaType
 import app.lifetime.data.Moment
 import app.lifetime.data.MomentSource
+import app.lifetime.ui.components.CaptionSheet
 import app.lifetime.ui.components.DarkSystemBars
 import app.lifetime.ui.components.Formatting
 import java.io.File
@@ -69,7 +78,7 @@ import java.io.File
 @Composable
 fun ViewerScreen(momentId: Long, onBack: () -> Unit) {
     val app = LocalContext.current.applicationContext as LifetimeApp
-    val vm: ViewerViewModel = viewModel { ViewerViewModel(app.container.repository) }
+    val vm: ViewerViewModel = viewModel { ViewerViewModel(app.container.repository, app.container.appScope) }
     val moments by vm.moments.collectAsStateWithLifecycle()
 
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
@@ -107,6 +116,7 @@ private fun ViewerPager(
     var zoomed by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var editCaption by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val current = moments.getOrNull(pagerState.currentPage.coerceAtMost(moments.lastIndex))
@@ -164,12 +174,45 @@ private fun ViewerPager(
                     Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White)
                 }
             }
+            current?.let { m ->
+                IconButton(onClick = { editCaption = true }) {
+                    Icon(
+                        if (m.caption == null) Icons.Outlined.EditNote else Icons.Outlined.Edit,
+                        contentDescription = if (m.caption == null) "Add caption" else "Edit caption",
+                        tint = Color.White,
+                    )
+                }
+            }
             IconButton(onClick = { showInfo = true }) {
                 Icon(Icons.Outlined.Info, contentDescription = "Info", tint = Color.White)
             }
             IconButton(onClick = { confirmDelete = true }) {
                 Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete", tint = Color.White)
             }
+        }
+    }
+
+    // The caption sits at the bottom like a post's text, and hides with the controls.
+    val captioned = current?.takeIf { it.caption != null }
+    AnimatedVisibility(visible = chromeVisible && captioned != null, enter = fadeIn(), exit = fadeOut()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            captioned?.let { m ->
+                key(m.id) { CaptionOverlay(m.caption.orEmpty(), aboveVideoControls = m.type == MediaType.VIDEO) }
+            }
+        }
+    }
+
+    if (editCaption && current != null) {
+        key(current.id) {
+            CaptionSheet(
+                initial = current.caption,
+                onDismiss = { editCaption = false },
+                onSave = { text ->
+                    vm.saveCaption(current.id, text).await().also { saved ->
+                        if (!saved) Toast.makeText(context, "Couldn't save the caption", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
         }
     }
 
@@ -201,6 +244,27 @@ private fun ViewerPager(
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun CaptionOverlay(caption: String, aboveVideoControls: Boolean) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Text(
+        caption,
+        color = Color.White,
+        style = MaterialTheme.typography.bodyLarge,
+        maxLines = if (expanded) Int.MAX_VALUE else 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
+            .navigationBarsPadding()
+            .padding(bottom = if (aboveVideoControls) 88.dp else 0.dp)
+            .heightIn(max = 360.dp)
+            .verticalScroll(rememberScrollState())
+            .clickable { expanded = !expanded }
+            .padding(start = 20.dp, end = 20.dp, top = 32.dp, bottom = 20.dp),
+    )
 }
 
 @Composable

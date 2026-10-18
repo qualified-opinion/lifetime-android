@@ -20,6 +20,7 @@ import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.camera.view.video.AudioConfig
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -44,6 +45,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
@@ -56,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +82,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.lifetime.LifetimeApp
 import app.lifetime.data.MediaType
+import app.lifetime.ui.components.CaptionSheet
 import app.lifetime.ui.components.DarkSystemBars
 import app.lifetime.ui.components.Formatting
 import coil3.compose.AsyncImage
@@ -157,6 +161,9 @@ private fun CameraContent(
     var flash by remember { mutableStateOf(false) }
 
     val lastCapture by vm.lastCapture.collectAsStateWithLifecycle()
+    // The caption prompt belongs to the newest capture; a new shot replaces it, so skipping is free.
+    var captionDoneFor by rememberSaveable { mutableStateOf<Long?>(null) }
+    var captionSheetFor by rememberSaveable { mutableStateOf<Long?>(null) }
     val locationTagging by vm.locationTagging.collectAsStateWithLifecycle()
 
     // Only one of photo/video is bound at a time: binding both isn't supported on every device.
@@ -313,6 +320,14 @@ private fun CameraContent(
                 .background(Color.Black.copy(alpha = 0.25f))
                 .navigationBarsPadding().padding(top = 12.dp, bottom = 24.dp),
         ) {
+            val captionTarget = lastCapture?.takeIf { it.id != captionDoneFor }
+            AnimatedVisibility(visible = captionTarget != null && !isRecording) {
+                CaptionPrompt(
+                    type = captionTarget?.type ?: MediaType.PHOTO,
+                    onAdd = { captionSheetFor = captionTarget?.id },
+                    onSkip = { captionDoneFor = captionTarget?.id },
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.alpha(if (isRecording) 0f else 1f)) {
                 ModeLabel("Photo", selected = mode == MediaType.PHOTO, enabled = !isRecording) { mode = MediaType.PHOTO }
                 ModeLabel("Video", selected = mode == MediaType.VIDEO, enabled = !isRecording) { mode = MediaType.VIDEO }
@@ -356,6 +371,43 @@ private fun CameraContent(
                     Icon(Icons.Outlined.Cameraswitch, contentDescription = "Switch camera", tint = Color.White)
                 }
             }
+        }
+    }
+
+    captionSheetFor?.let { id ->
+        key(id) {
+            CaptionSheet(
+                initial = null,
+                onDismiss = { captionSheetFor = null },
+                onSave = { text ->
+                    vm.saveCaption(id, text).await().also { saved -> if (saved) captionDoneFor = id }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaptionPrompt(type: MediaType, onAdd: () -> Unit, onSkip: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(bottom = 12.dp).clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.55f)),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable(onClick = onAdd).padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            Icon(Icons.Outlined.EditNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (type == MediaType.VIDEO) "Add a caption to this video" else "Add a caption to this photo",
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        IconButton(onClick = onSkip, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Outlined.Close, contentDescription = "Skip caption", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
         }
     }
 }
