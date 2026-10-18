@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-18. Jan asked for captions on moments and said go; the captions batch is built in PR #9 and needs his phone test and OK. Batches 3 and 4 are not started.
+**Last updated:** 2026-10-18. Captions merged (PR #9). Jan said to move on to the next item, so batch 3 (guardrails) is built in a PR that needs review and his OK. Batch 4 is not started.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -16,11 +16,11 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 2. Import dates and location | `fix/import-date-gps` | Date fallback chain, `ACCESS_MEDIA_LOCATION`, reject 0,0, no orphan files, honest import message | Merged (PR #4, `c54cc12`). Jan reports dates correct and camera GPS working, but imported photo GPS missing; follow-up below. Pack: `handoffs/batch2-import-dates-gps.md`, review: `reviews/pr4-claude-review.md` |
 | 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Merged (PR #6, `65ed66c`). Jan confirmed imported GPS and toolbar toggling work on his phone (2026-10-17). Pack: `handoffs/import-location-viewer-controls.md` |
 | Signed release workflow | `claude/project-thread-49hd2l` | Owner-started workflow that builds, signs and publishes a release APK | Merged (PR #7, #8). Uses the owner's existing signing secrets; v0.2.0 published |
-| Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | PR #9: built by Claude Code after Jan's go (2026-10-18). Needs an independent review, Jan's phone test (export a backup first) and his OK. Pack: `handoffs/captions.md` |
-| 3. Guardrails: lint, R8 and CI | not started | see below | Needs a handoff pack and the owner's go |
+| Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | Merged (PR #9, `53fab94`, 2026-10-18). Pack: `handoffs/captions.md` |
+| 3. Guardrails: lint, R8 and CI | `claude/project-thread-rfyq2b` | Lint and a minified release build in CI, Dependabot, import cancellation leftover | Built by Claude Code after Jan's go (2026-10-18). Needs review and his OK; branch protection is his GitHub setting. Pack: `handoffs/batch3-guardrails.md` |
 | 4. Privacy hardening | not started | see below | Needs a handoff pack and the owner's go |
 
-## Captions (in PR #9)
+## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
 - After a photo or video, an optional "Add a caption" bar appears above the shutter. Skipping it changes nothing, so shooting in a row still works.
 - The caption shows at the bottom of the viewer and can be added, edited or cleared there for any moment, imported ones included.
@@ -28,13 +28,13 @@ Jan wants Lifetime to replace social media, so a moment should carry its own wor
 - Stored in a new nullable `caption` column (Room v2, manual migration, `MigrationTest`) and written to `moments.json` on export. The media file is never rewritten.
 - Out of scope: writing captions into EXIF, hashtags or sharing, caption search, restore from export.
 
-## Batch 3: guardrails (next after captions)
-Goal: catch breakage before it reaches the phone. Outline only; a full pack is written when the owner says go.
-- Add Android lint to CI (`lintDebug`) and fix or baseline what it finds.
-- A release (R8) build smoke test in CI, so minification problems show up before a release build is tried.
-- Branch protection on `main` and Dependabot for Gradle and Actions (owner does the GitHub settings; a PR can add `dependabot.yml`).
-- Small leftovers from the batch 2 review: log (do not ignore) a failed delete of an orphaned file in `importOne`; route a camera-capture location through the same 0,0 check as imports; call `ensureActive()` in the import catch so a stray `CancellationException` is not mistaken for a cancelled import.
-- CI already runs `testDebugUnitTest assembleDebug` and fails if the Room schema in `app/schemas` is not committed.
+## Batch 3: guardrails (in review)
+Goal: catch breakage before it reaches the phone. Full plan in `handoffs/batch3-guardrails.md`. In short:
+- CI runs `lintDebug`: errors fail the build, warnings are printed in the log.
+- CI builds a minified release with `-Plifetime.minify=true`. Signed releases keep R8 off until a minified build is tested on the phone.
+- `dependabot.yml`: monthly grouped PRs for Gradle and Actions. Branch protection on `main` is the owner's GitHub setting.
+- Batch 2 review leftovers: a stray `CancellationException` now fails only that import item (`ensureActive()` in the catch). The orphan-delete log and the camera 0,0 check were already in place.
+- CI still runs `testDebugUnitTest assembleDebug` and fails if the Room schema in `app/schemas` is not committed.
 
 ## Batch 4: privacy hardening
 Outline only; write the pack when the owner says go. Cut anything the owner does not want.
@@ -82,5 +82,5 @@ Still not individually documented: process death during the post-capture locatio
 - A location of exactly 0,0 is rejected everywhere it is parsed.
 - Room entity changes need a version bump, a non-destructive migration and a `MigrationTest` case. Room is at version 2 since the captions batch (first migration: adds `caption`). Export a backup before installing a build that changes the database. The schema in `app/schemas` must be committed (CI checks it).
 - Permissions today: camera, microphone, coarse and fine location (optional, off by default), `ACCESS_MEDIA_LOCATION` (requested at runtime on first import). Do not add `INTERNET` or storage permissions.
-- Every push builds a debug APK and publishes it as a prerelease named after the branch. The owner installs from the Releases page.
+- Every push builds a debug APK and publishes it as a prerelease named after the branch (not for Dependabot). The owner installs from the Releases page. CI also runs lint and a minified release build.
 - Signed releases: the owner runs **Signed release** from the Actions tab on `main` with a version such as `0.2.0`. It tests, builds, signs with the keystore in the `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets, and publishes release `v<version>`. Losing that keystore means the app can no longer be updated in place, so keep a backup. The signed app (`app.lifetime`) is separate from the debug app (`app.lifetime.debug`) and does not see its moments.
