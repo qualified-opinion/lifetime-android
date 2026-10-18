@@ -169,17 +169,34 @@ class ImportTest {
         f.assertNoFiles()
     }
 
-    @Test fun cancelledInsertDeletesCommittedImportAndRethrowsCancellation() = runBlocking {
+    @Test fun strayCancellationFromInsertFailsOnlyThatItemAndDeletesItsFile() = runBlocking {
         val f = Fixture()
-        val failure = CancellationException("Insert cancelled")
+        var inserts = 0
         f.dao.beforeInsert = { row ->
             assertTrue(f.repository.fileFor(row).exists())
-            throw failure
+            if (inserts++ == 0) throw CancellationException("Insert cancelled")
         }
-        try {
-            f.repository.importItems(listOf(Unit), { f.import() })
-            fail("Expected cancellation")
-        } catch (actual: CancellationException) { assertEquals(failure.message, actual.message) }
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val result = f.repository.importItems(listOf(0, 1), { f.import() }, { done, total -> progress.add(done to total) })
+        assertEquals(MomentRepository.ImportResult(1, 0), result)
+        assertEquals(listOf(1 to 2, 2 to 2), progress)
+        val row = f.dao.rows.single()
+        assertEquals(1, f.storage.root.walkTopDown().count { it.isFile })
+        assertTrue(f.repository.fileFor(row).exists())
+        assertTrue(f.incoming.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test fun cancelledImportJobStillStopsAtTheFailingItem() = runBlocking {
+        val f = Fixture()
+        val job = launch(Dispatchers.Default) {
+            val importJob = currentCoroutineContext().job
+            f.repository.importItems(listOf(0, 1), {
+                f.dao.beforeInsert = { importJob.cancel(); throw CancellationException("Insert cancelled") }
+                f.import()
+            })
+        }
+        withTimeout(5_000) { job.join() }
+        assertTrue(job.isCancelled)
         f.assertNoFiles()
     }
 

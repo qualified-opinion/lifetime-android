@@ -36,7 +36,8 @@ jobs:
       # Every push publishes a downloadable "latest build" release so the APK can
       # be installed straight from a phone browser (no login, no unzipping).
       - name: Publish latest debug build
-        if: github.event_name == 'push'
+        # Dependabot runs get a read-only token, so they skip publishing.
+        if: github.event_name == 'push' && github.actor != 'dependabot[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -58,3 +59,12 @@ jobs:
             find app/schemas -name '*.json' -exec sh -c 'echo "----- $1"; cat "$1"' _ {} \;
             exit 1
           fi
+
+      # Guardrails: Android lint, and a minified (R8) release build so shrinking problems
+      # show up here rather than in a signed release. The release APK is unsigned and not kept.
+      - name: Lint and R8 release build
+        run: ./gradlew --no-daemon lintDebug assembleRelease -Plifetime.minify=true
+
+      - name: Show lint report
+        if: always()
+        run: cat app/build/reports/lint-results-debug.txt 2>/dev/null || echo "No lint report."
