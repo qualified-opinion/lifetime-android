@@ -30,6 +30,8 @@ data class Moment(
     val height: Int = 0,
     val durationMs: Long = 0,
     val sizeBytes: Long = 0,
+    /** The owner's own words about this moment, like a post. Null when there is none. */
+    val caption: String? = null,
 ) {
     val hasLocation: Boolean get() = latitude != null && longitude != null
     val fileName: String get() = relativePath.substringAfterLast('/')

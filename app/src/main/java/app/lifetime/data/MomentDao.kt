@@ -24,6 +24,9 @@ interface MomentDao {
     @Query("UPDATE moments SET latitude = :latitude, longitude = :longitude WHERE id = :id AND latitude IS NULL AND longitude IS NULL")
     suspend fun updateLocation(id: Long, latitude: Double, longitude: Double): Int
 
+    @Query("UPDATE moments SET caption = :caption WHERE id = :id")
+    suspend fun updateCaption(id: Long, caption: String?): Int
+
     @Delete
     suspend fun delete(moment: Moment)
 }

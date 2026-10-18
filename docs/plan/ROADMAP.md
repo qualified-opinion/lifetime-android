@@ -2,10 +2,10 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-17, after Jan's phone testing. Import GPS and viewer controls follow-up (PR #6) reviewed and phone-tested, merging; batches 3 and 4 are not started.
+**Last updated:** 2026-10-18. Jan asked for captions on moments and said go; the captions batch is built in PR #9 and needs his phone test and OK. Batches 3 and 4 are not started.
 
 ## What Lifetime is
-A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 1), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
+A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
 
 ## Where the work stands
 
@@ -14,12 +14,21 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | MVP | n/a | Capture, import, timeline, viewer, delete, zip export, optional location | Merged (PR #1, 2026-10-16) |
 | 1. Safe capture and export | `fix/safe-capture-export` | A capture or export can never silently lose data or leave junk | Merged (PR #3, `daac326`). Jan reports batch 1 and import/export working (2026-10-17); individual interruption scenarios not separately recorded. Pack: `handoffs/batch1-safe-capture-export.md` |
 | 2. Import dates and location | `fix/import-date-gps` | Date fallback chain, `ACCESS_MEDIA_LOCATION`, reject 0,0, no orphan files, honest import message | Merged (PR #4, `c54cc12`). Jan reports dates correct and camera GPS working, but imported photo GPS missing; follow-up below. Pack: `handoffs/batch2-import-dates-gps.md`, review: `reviews/pr4-claude-review.md` |
-| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | PR #6: reviewed by Claude Code (added MediaStore original access for Images/Recent picks, `86f31e3`); Jan confirmed imported GPS and toolbar toggling work on his phone (2026-10-17). Pack: `handoffs/import-location-viewer-controls.md` |
-| Signed release workflow | `claude/project-thread-49hd2l` | Owner-started workflow that builds, signs and publishes a release APK | Merged (PR #7). Uses the owner's existing signing secrets |
+| 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Merged (PR #6, `65ed66c`). Jan confirmed imported GPS and toolbar toggling work on his phone (2026-10-17). Pack: `handoffs/import-location-viewer-controls.md` |
+| Signed release workflow | `claude/project-thread-49hd2l` | Owner-started workflow that builds, signs and publishes a release APK | Merged (PR #7, #8). Uses the owner's existing signing secrets; v0.2.0 published |
+| Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | PR #9: built by Claude Code after Jan's go (2026-10-18). Needs an independent review, Jan's phone test (export a backup first) and his OK. Pack: `handoffs/captions.md` |
 | 3. Guardrails: lint, R8 and CI | not started | see below | Needs a handoff pack and the owner's go |
 | 4. Privacy hardening | not started | see below | Needs a handoff pack and the owner's go |
 
-## Batch 3: guardrails (next)
+## Captions (in PR #9)
+Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
+- After a photo or video, an optional "Add a caption" bar appears above the shutter. Skipping it changes nothing, so shooting in a row still works.
+- The caption shows at the bottom of the viewer and can be added, edited or cleared there for any moment, imported ones included.
+- In the timeline, a captioned moment shows like a post: the photo full width with its caption under it, in time order among that day's grid photos.
+- Stored in a new nullable `caption` column (Room v2, manual migration, `MigrationTest`) and written to `moments.json` on export. The media file is never rewritten.
+- Out of scope: writing captions into EXIF, hashtags or sharing, caption search, restore from export.
+
+## Batch 3: guardrails (next after captions)
 Goal: catch breakage before it reaches the phone. Outline only; a full pack is written when the owner says go.
 - Add Android lint to CI (`lintDebug`) and fix or baseline what it finds.
 - A release (R8) build smoke test in CI, so minification problems show up before a release build is tried.
@@ -67,11 +76,11 @@ Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS an
 Still not individually documented: process death during the post-capture location wait, and partial-ZIP cleanup after failed/cancelled export. Jan's broad batch-1 pass is recorded above without claiming each fault scenario was reproduced.
 
 ## Facts a new owner needs
-- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`) is the backup.
+- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`, which includes captions) is the backup.
 - Order of operations on capture: commit the file and insert the row first, fetch location afterwards and update the row.
 - Date for an imported item comes from, in order: embedded EXIF or video date, provider date taken, date parsed from the file name, provider last modified, then now. Items that fell back to now are counted in the import message.
 - A location of exactly 0,0 is rejected everywhere it is parsed.
-- Room entity changes need a version bump, a non-destructive migration and a `MigrationTest` case. The schema in `app/schemas` must be committed (CI checks it).
+- Room entity changes need a version bump, a non-destructive migration and a `MigrationTest` case. Room is at version 2 since the captions batch (first migration: adds `caption`). Export a backup before installing a build that changes the database. The schema in `app/schemas` must be committed (CI checks it).
 - Permissions today: camera, microphone, coarse and fine location (optional, off by default), `ACCESS_MEDIA_LOCATION` (requested at runtime on first import). Do not add `INTERNET` or storage permissions.
 - Every push builds a debug APK and publishes it as a prerelease named after the branch. The owner installs from the Releases page.
 - Signed releases: the owner runs **Signed release** from the Actions tab on `main` with a version such as `0.2.0`. It tests, builds, signs with the keystore in the `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets, and publishes release `v<version>`. Losing that keystore means the app can no longer be updated in place, so keep a backup. The signed app (`app.lifetime`) is separate from the debug app (`app.lifetime.debug`) and does not see its moments.

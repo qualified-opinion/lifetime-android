@@ -22,6 +22,9 @@ newest **Debug build**, and allow "install unknown apps" for your browser when a
   with Media3.
 - **Manage**: details sheet (date, type, size, location with "open in maps"), delete,
   and export everything to a `.zip` (all files plus a `moments.json` index).
+- **Captions**: write a few words right after a capture (or later in the viewer), like a
+  post. Captioned moments show full width in the timeline with their text under them, and the
+  caption is part of the export.
 - **Location**: optional, off by default, toggled on the camera screen.
 
 ## How it is built

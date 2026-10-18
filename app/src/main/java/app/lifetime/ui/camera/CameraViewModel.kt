@@ -9,6 +9,7 @@ import app.lifetime.data.Moment
 import app.lifetime.data.MomentRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -73,5 +75,22 @@ class CameraViewModel internal constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Stores the caption for a capture. Runs in the app scope so it still lands if the camera
+     * closes right after Save. Completes with false (and a message) if it couldn't be saved.
+     */
+    fun saveCaption(id: Long, text: String): Deferred<Boolean> = appScope.async(Dispatchers.IO) {
+        val saved = try {
+            repository.setCaption(id, text)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.w("CameraViewModel", "Couldn't save caption", failure)
+            false
+        }
+        if (!saved) _messages.trySend("Couldn't save the caption")
+        saved
     }
 }
