@@ -38,7 +38,9 @@ android {
         }
         release {
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
+            // Signed releases ship without R8 for now. CI builds a minified release with
+            // -Plifetime.minify=true so shrinking problems show up before it is switched on.
+            isMinifyEnabled = providers.gradleProperty("lifetime.minify").orNull == "true"
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -52,6 +54,11 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    lint {
+        // CI runs lintDebug: errors fail the build, warnings are listed in the text report.
+        abortOnError = true
+        textReport = true
     }
     testOptions {
         // Lets JVM tests touch android.* stubs (e.g. Log) without crashing.

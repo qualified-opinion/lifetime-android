@@ -121,7 +121,9 @@ class MomentRepository(
                 if (importItem(item)) undated++
                 imported++
             } catch (cancelled: CancellationException) {
-                throw cancelled
+                // A real cancel stops the import here; a stray one thrown by the item only fails that item.
+                ensureActive()
+                Log.w(TAG, "Import failed for $item", cancelled)
             } catch (failure: Exception) {
                 Log.w(TAG, "Import failed for $item", failure)
             }

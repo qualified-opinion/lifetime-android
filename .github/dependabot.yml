@@ -1,0 +1,19 @@
+# Monthly, grouped update PRs for Gradle libraries and GitHub Actions.
+# Each one runs CI like any other PR; merge only after review and the owner's OK.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      gradle:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
