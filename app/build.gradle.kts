@@ -104,6 +104,11 @@ dependencies {
 
     implementation(libs.androidx.exifinterface)
 
+    // App lock: one prompt for fingerprint/face or the phone's PIN on Android 8 to 15.
+    // BiometricPrompt needs a FragmentActivity; pin a current fragment over biometric's old one.
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
+
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
 

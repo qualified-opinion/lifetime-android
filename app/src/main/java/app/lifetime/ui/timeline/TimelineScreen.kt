@@ -27,9 +27,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -47,6 +49,7 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -76,6 +79,8 @@ import app.lifetime.LifetimeApp
 import app.lifetime.data.Moment
 import app.lifetime.ui.components.Formatting
 import app.lifetime.ui.components.MomentThumbnail
+import app.lifetime.ui.lock.DeviceUnlock
+import app.lifetime.ui.lock.findFragmentActivity
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
@@ -90,10 +95,13 @@ fun TimelineScreen(
     onOpenCamera: () -> Unit,
     onOpenMoment: (Long) -> Unit,
 ) {
-    val app = LocalContext.current.applicationContext as LifetimeApp
+    val context = LocalContext.current
+    val app = context.applicationContext as LifetimeApp
     val vm: TimelineViewModel = viewModel { TimelineViewModel(app.container.repository) }
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val privacyScreen by app.container.preferences.privacyScreen.collectAsStateWithLifecycle()
+    val appLockOn by app.container.preferences.appLock.collectAsStateWithLifecycle()
 
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
@@ -124,6 +132,20 @@ fun TimelineScreen(
             mediaLocationPermission.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
         } else {
             openPicker()
+        }
+    }
+
+    // Turning the lock on asks for the phone's unlock first, so it is known to work.
+    val toggleAppLock = toggle@{
+        val appLock = app.container.appLock
+        if (appLockOn) return@toggle appLock.turnOff()
+        val activity = context.findFragmentActivity() ?: return@toggle
+        if (!DeviceUnlock.hasScreenLock(context)) {
+            scope.launch { snackbar.showSnackbar("Set a screen lock in the phone's settings first.") }
+            return@toggle
+        }
+        DeviceUnlock.ask(activity, "Turn on app lock") { result ->
+            if (result == DeviceUnlock.Result.UNLOCKED) appLock.turnOn()
         }
     }
 
@@ -176,6 +198,18 @@ fun TimelineScreen(
                                 menuOpen = false
                                 exportLauncher.launch("lifetime-export-${LocalDate.now()}.zip")
                             },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Block screenshots") },
+                            leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null) },
+                            trailingIcon = { Switch(checked = privacyScreen, onCheckedChange = null) },
+                            onClick = { app.container.preferences.setPrivacyScreen(!privacyScreen) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("App lock") },
+                            leadingIcon = { Icon(Icons.Outlined.Lock, null) },
+                            trailingIcon = { Switch(checked = appLockOn, onCheckedChange = null) },
+                            onClick = { menuOpen = false; toggleAppLock() },
                         )
                     }
                 },
