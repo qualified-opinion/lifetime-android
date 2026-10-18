@@ -16,7 +16,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 2. Import dates and location | `fix/import-date-gps` | Date fallback chain, `ACCESS_MEDIA_LOCATION`, reject 0,0, no orphan files, honest import message | Merged (PR #4, `c54cc12`). Jan reports dates correct and camera GPS working, but imported photo GPS missing; follow-up below. Pack: `handoffs/batch2-import-dates-gps.md`, review: `reviews/pr4-claude-review.md` |
 | 2 follow-up. Import GPS and viewer controls | `fix/import-location-viewer-controls` | Original-file import; repeatable photo toolbar toggles | Merged (PR #6, `65ed66c`). Jan confirmed imported GPS and toolbar toggling work on his phone (2026-10-17). Pack: `handoffs/import-location-viewer-controls.md` |
 | Signed release workflow | `claude/project-thread-49hd2l` | Owner-started workflow that builds, signs and publishes a release APK | Merged (PR #7, #8). Uses the owner's existing signing secrets; v0.2.0 published |
-| Captions (next) | `feat/captions` | Write a caption right after capture or later in the viewer; kept in the export. First Room migration (v1 to v2) | Pack written (2026-10-18): `handoffs/captions.md`. Needs the owner's go |
+| Captions (next) | `feat/captions` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | Pack written (2026-10-18): `handoffs/captions.md`. Needs the owner's go |
 | 3. Guardrails: lint, R8 and CI | not started | see below | Needs a handoff pack and the owner's go |
 | 4. Privacy hardening | not started | see below | Needs a handoff pack and the owner's go |
 
