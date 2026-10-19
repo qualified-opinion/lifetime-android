@@ -55,7 +55,7 @@ app/src/main/java/app/lifetime/
 Media lives in the app's private storage (`files/media/`), not the shared gallery. That
 needs no storage permission, keeps the timeline private, and avoids duplicate entries in
 the gallery. The trade-off is that uninstalling the app deletes it, so use
-**Export everything** for backups.
+**Export everything** for backups, and **Restore from export** to read one back in.
 
 ## Building locally
 

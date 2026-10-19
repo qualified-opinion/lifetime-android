@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -25,6 +26,7 @@ import java.io.OutputStream
 import java.time.Instant
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
@@ -343,11 +345,136 @@ class MomentRepository(
         caption?.let { put("caption", it) }
     }
 
+    data class RestoreResult(val restored: Int, val alreadyHere: Int, val failed: Int)
+
+    /**
+     * Reads a Lifetime export zip back into the timeline. Adds moments, never replaces or
+     * deletes any. A moment already here (same time, type and size) is skipped.
+     */
+    suspend fun restore(
+        zip: Uri,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): RestoreResult = restore({ context.contentResolver.openInputStream(zip) }, onProgress)
+
+    /**
+     * Two passes over the zip, because moments.json is its last entry: first read the index,
+     * then stream each media file into place. Nothing is unpacked twice or held in memory.
+     */
+    internal suspend fun restore(
+        openZip: () -> InputStream?,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): RestoreResult = withContext(Dispatchers.IO) {
+        val index = ExportIndex.parse(readExportIndex(openZip))
+        val pending = index.entries.associateBy { it.file }.toMutableMap()
+        val total = pending.size
+        val existing = dao.getAll().mapTo(HashSet()) { RestoreKey(it.capturedAt, it.type, it.sizeBytes) }
+        var restored = 0
+        var alreadyHere = 0
+        var failed = index.refused
+        var done = 0
+
+        ZipInputStream((openZip() ?: error("Cannot open the export")).buffered()).use { zip ->
+            while (pending.isNotEmpty()) {
+                ensureActive() // stop between items if the restore is cancelled
+                val zipEntry = zip.nextEntry ?: break
+                val entry = pending.remove(zipEntry.name) ?: continue
+                try {
+                    if (restoreOne(entry, zip, existing)) restored++ else alreadyHere++
+                } catch (cancelled: CancellationException) {
+                    // A real cancel stops the restore here; a stray one only fails that item.
+                    ensureActive()
+                    failed++
+                    Log.w(TAG, "Restore failed for ${entry.file}", cancelled)
+                } catch (failure: Exception) {
+                    failed++
+                    Log.w(TAG, "Restore failed for ${entry.file}", failure)
+                }
+                onProgress(++done, total)
+            }
+        }
+        failed += pending.size // listed in moments.json but missing from the zip
+        RestoreResult(restored, alreadyHere, failed)
+    }
+
+    private data class RestoreKey(val capturedAt: Long, val type: MediaType, val size: Long)
+
+    private fun readExportIndex(openZip: () -> InputStream?): String {
+        ZipInputStream((openZip() ?: error("Cannot open the export")).buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.name != ExportIndex.FILE_NAME) continue
+                val bytes = ByteArrayOutputStream()
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = zip.read(buffer)
+                    if (count < 0) break
+                    bytes.write(buffer, 0, count)
+                    if (bytes.size() > MAX_INDEX_BYTES) throw ExportIndex.NotAnExport("This isn't a Lifetime export")
+                }
+                return bytes.toString(Charsets.UTF_8.name())
+            }
+        }
+        throw ExportIndex.NotAnExport("This isn't a Lifetime export (no moments.json)")
+    }
+
+    /** Returns false if the moment was already in the timeline. */
+    private suspend fun restoreOne(entry: ExportIndex.Entry, source: InputStream, existing: MutableSet<RestoreKey>): Boolean {
+        val temp = storage.newTempFile(entry.extension)
+        try {
+            temp.outputStream().use { dst ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val count = source.read(buffer) // ends at the end of this zip entry
+                    if (count < 0) break
+                    dst.write(buffer, 0, count)
+                }
+            }
+            val size = temp.length()
+            val key = RestoreKey(entry.capturedAt, entry.type, size)
+            if (key in existing) return false
+            currentCoroutineContext().ensureActive()
+            // Complete the file/row pair together even if cancellation arrives during the insert.
+            withContext(NonCancellable) {
+                var committed: File? = null
+                try {
+                    val relativePath = storage.commit(temp, entry.type, entry.capturedAt, entry.extension)
+                    committed = File(storage.root, relativePath)
+                    insert(
+                        Moment(
+                            type = entry.type,
+                            source = entry.source,
+                            relativePath = relativePath,
+                            mimeType = entry.mimeType,
+                            capturedAt = entry.capturedAt,
+                            addedAt = System.currentTimeMillis(),
+                            latitude = entry.latitude,
+                            longitude = entry.longitude,
+                            width = entry.width,
+                            height = entry.height,
+                            durationMs = entry.durationMs,
+                            sizeBytes = size,
+                            caption = entry.caption,
+                        ),
+                    )
+                } catch (failure: Throwable) {
+                    committed?.let { if (!it.delete()) Log.w(TAG, "Couldn't delete committed restore $it", failure) }
+                    throw failure
+                }
+            }
+            existing.add(key)
+            return true
+        } finally {
+            temp.delete() // no-op once committed
+        }
+    }
+
     /** Called on start-up to drop half-written captures. */
     fun cleanUpIncoming() = storage.clearIncoming()
 
     private companion object {
         const val TAG = "MomentRepository"
+        const val MAX_INDEX_BYTES = 64 * 1024 * 1024
         val DATE_COLUMNS = listOf("datetaken", "date_taken")
     }
 }

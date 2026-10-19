@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-19. Batches 1 to 4 are merged (privacy hardening: PR #13). Batch 5 (restore from export) is proposed in `handoffs/batch5-restore-from-export.md` and needs the owner's go.
+**Last updated:** 2026-10-19. Batches 1 to 4 are merged (privacy hardening: PR #13). Batch 5 (restore from export) is planned and built in one PR (`handoffs/batch5-restore-from-export.md`) that needs review and the owner's OK.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -19,7 +19,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | Merged (PR #9, `53fab94`, 2026-10-18). Pack: `handoffs/captions.md` |
 | 3. Guardrails: lint, R8 and CI | `claude/project-thread-rfyq2b` | Lint and a minified release build in CI, Dependabot, import cancellation leftover | Merged (PR #10, `7743a2f`, 2026-10-18). Branch protection on `main` turned on by Jan. Pack: `handoffs/batch3-guardrails.md` |
 | 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Merged (PR #13, `90f846b`, 2026-10-18). Phone-to-phone transfer kept on (recommended default; Jan can still ask to block it). Pack: `handoffs/batch4-privacy-hardening.md` |
-| 5. Restore from export | not started | Read a Lifetime export zip back into the timeline, adding and never replacing | Proposed; needs the owner's go. Pack: `handoffs/batch5-restore-from-export.md` |
+| 5. Restore from export | `claude/project-thread-0wngww` | Read a Lifetime export zip back into the timeline, adding and never replacing | Built by Claude Code after Jan said to continue (2026-10-19). Needs review and his OK. Pack: `handoffs/batch5-restore-from-export.md` |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
@@ -41,7 +41,7 @@ Goal: catch breakage before it reaches the phone. Full plan in `handoffs/batch3-
 Goal: someone holding the unlocked phone, or looking at recent apps, does not see the timeline. Full plan in `handoffs/batch4-privacy-hardening.md`. In short:
 - **Block screenshots** (menu switch, on by default): `FLAG_SECURE`, so recents shows a blank card and screenshots and screen recordings are blocked.
 - **App lock** (menu switch, off by default): the phone's own fingerprint, face or PIN via `BiometricPrompt`. Locks on a cold start and after 60 seconds in the background; unlocking returns to the same screen. If the phone loses its screen lock, the app opens and turns the lock off rather than lock Jan out.
-- **Backup:** Google cloud backup stays off. Phone-to-phone transfer (cable or direct Wi-Fi, Android 12+) keeps carrying media, database and settings to a new phone, now written down in `data_extraction_rules.xml`; kept as the recommended default because restore-from-export does not exist yet.
+- **Backup:** Google cloud backup stays off. Phone-to-phone transfer (cable or direct Wi-Fi, Android 12+) keeps carrying media, database and settings to a new phone, now written down in `data_extraction_rules.xml`; kept as the recommended default (it works without making an export first).
 - New dependencies: `androidx.biometric` 1.1.0 and `androidx.fragment` 1.8.6 (`MainActivity` is now a `FragmentActivity`). No permission changes besides the library's normal `USE_BIOMETRIC`.
 
 ## Later ideas, not scheduled
@@ -78,12 +78,13 @@ Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS an
 Still not individually documented: process death during the post-capture location wait, and partial-ZIP cleanup after failed/cancelled export. Jan's broad batch-1 pass is recorded above without claiming each fault scenario was reproduced.
 
 ## Facts a new owner needs
-- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`, which includes captions) is the backup.
+- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`, which includes captions) is the backup, and **Restore from export** reads it back in (adds only, skips moments already there by time, type and size; works between the debug and signed apps).
 - Order of operations on capture: commit the file and insert the row first, fetch location afterwards and update the row.
 - Date for an imported item comes from, in order: embedded EXIF or video date, provider date taken, date parsed from the file name, provider last modified, then now. Items that fell back to now are counted in the import message.
 - A location of exactly 0,0 is rejected everywhere it is parsed.
 - Room entity changes need a version bump, a non-destructive migration and a `MigrationTest` case. Room is at version 2 since the captions batch (first migration: adds `caption`). Export a backup before installing a build that changes the database. The schema in `app/schemas` must be committed (CI checks it).
 - Permissions today: camera, microphone, coarse and fine location (optional, off by default), `ACCESS_MEDIA_LOCATION` (requested at runtime on first import), and `USE_BIOMETRIC` from the biometric library (install-time, for the app lock). Do not add `INTERNET` or storage permissions.
+- Restore: timeline menu > Restore from export (.zip) reads an export back in. It only adds moments, skips ones already there (same time, type and size), and works across the debug and signed apps.
 - Privacy: screenshots are blocked by default (timeline menu > Block screenshots). The app lock is off by default and uses the phone's own unlock; there is no separate app PIN to forget.
 - Every push builds a debug APK and publishes it as a prerelease named after the branch (not for Dependabot). The owner installs from the Releases page. CI also runs lint and a minified release build.
 - Signed releases: the owner runs **Signed release** from the Actions tab on `main` with a version such as `0.2.0`. It tests, builds, signs with the keystore in the `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets, and publishes release `v<version>`. Losing that keystore means the app can no longer be updated in place, so keep a backup. The signed app (`app.lifetime`) is separate from the debug app (`app.lifetime.debug`) and does not see its moments.
