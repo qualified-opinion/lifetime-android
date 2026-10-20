@@ -20,6 +20,7 @@ import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -373,7 +374,7 @@ class MomentRepository(
         var failed = index.refused
         var done = 0
 
-        ZipInputStream((openZip() ?: error("Cannot open the export")).buffered()).use { zip ->
+        openRestoreZip(openZip).use { zip ->
             while (pending.isNotEmpty()) {
                 ensureActive() // stop between items if the restore is cancelled
                 val zipEntry = zip.nextEntry ?: break
@@ -398,8 +399,29 @@ class MomentRepository(
 
     private data class RestoreKey(val capturedAt: Long, val type: MediaType, val size: Long)
 
-    private fun readExportIndex(openZip: () -> InputStream?): String {
-        ZipInputStream((openZip() ?: error("Cannot open the export")).buffered()).use { zip ->
+    /**
+     * Check cancellation below ZipInputStream too: nextEntry drains unselected entries,
+     * including every media file before the index on the first pass.
+     */
+    private suspend fun openRestoreZip(openZip: () -> InputStream?): ZipInputStream {
+        val restoreContext = currentCoroutineContext()
+        restoreContext.ensureActive()
+        val input = openZip() ?: error("Cannot open the export")
+        return ZipInputStream(object : FilterInputStream(input.buffered()) {
+            override fun read(): Int {
+                restoreContext.ensureActive()
+                return super.read().also { restoreContext.ensureActive() }
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                restoreContext.ensureActive()
+                return `in`.read(buffer, offset, length).also { restoreContext.ensureActive() }
+            }
+        })
+    }
+
+    private suspend fun readExportIndex(openZip: () -> InputStream?): String {
+        openRestoreZip(openZip).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 if (entry.name != ExportIndex.FILE_NAME) continue

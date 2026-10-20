@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-19. Batches 1 to 4 are merged (privacy hardening: PR #13). Batch 5 (restore from export) is planned and built in one PR (`handoffs/batch5-restore-from-export.md`) that needs review and the owner's OK.
+**Last updated:** 2026-10-21. Batches 1 to 4 are merged (privacy hardening: PR #13). Batch 5 (restore from export) is planned and built in one PR (`handoffs/batch5-restore-from-export.md`) that needs review and the owner's OK.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -19,6 +19,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | Merged (PR #9, `53fab94`, 2026-10-18). Pack: `handoffs/captions.md` |
 | 3. Guardrails: lint, R8 and CI | `claude/project-thread-rfyq2b` | Lint and a minified release build in CI, Dependabot, import cancellation leftover | Merged (PR #10, `7743a2f`, 2026-10-18). Branch protection on `main` turned on by Jan. Pack: `handoffs/batch3-guardrails.md` |
 | 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Merged (PR #13, `90f846b`, 2026-10-18). Phone-to-phone transfer kept on (recommended default; Jan can still ask to block it). Pack: `handoffs/batch4-privacy-hardening.md` |
+| 5 follow-up. Restore cancellation | `fix/restore-scan-cancellation` | Stop ZIP scanning promptly after cancellation in both passes | Regression fix prepared on top of PR #15; CI and independent review required. No merge or device test claimed. |
 | 5. Restore from export | `claude/project-thread-0wngww` | Read a Lifetime export zip back into the timeline, adding and never replacing | Built by Claude Code after Jan said to continue (2026-10-19). Needs review and his OK. Pack: `handoffs/batch5-restore-from-export.md` |
 
 ## Captions (merged, PR #9)
