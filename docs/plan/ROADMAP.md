@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-21. Coil update merged in PR #25 (`569537a`). The next isolated dependency update is CameraX 1.4.2 to 1.5.3 on `chore/camerax-1.5.3`, keeping the existing SDK and toolchain. Phone acceptance remains pending.
+**Last updated:** 2026-10-21. CameraX update merged in PR #26 (`9e65f05`). The final planned engineering step is the isolated AGP 9 / built-in Kotlin migration on `chore/agp9-built-in-kotlin`. Phone acceptance remains pending.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -28,7 +28,8 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 6 maintenance. Fragment patch | `chore/fragment-1.8.9` | Fragment 1.8.9; saving/restoring an INITIALIZED fragment in a FragmentActivity | Merged in PR #23 (`fda75a8`). Tests (including initialized-fragment save/restore on APIs 26/33), debug APK, schema, lint and R8 passed on `410e2b6` (run 39553665382). Phone authentication retest pending. Pack: `handoffs/batch6-fragment-patch.md`. |
 | 6 maintenance. Video playback library | `chore/media3-1.8.0` | Media3 ExoPlayer/UI 1.8.0 with the existing SDK/toolchain | Merged in PR #24 (`0056cf3`) at the owner's request. Tests, debug APK, schema, lint and R8 passed on `a59f4ff` (run 39556054312). No independent review recorded; playback phone checks pending. Pack: `handoffs/batch6-media3-update.md`. |
 | 6 maintenance. Image and video thumbnails | `chore/coil-3.2.0` | Coil compose/video 3.2.0 with the existing SDK/toolchain | Merged in PR #25 (`569537a`). Tests, debug APK, schema, lint and R8 passed on `23a3221` (run 39557278823). Photo orientation, zoom and video thumbnail phone checks pending. Pack: `handoffs/batch6-coil-update.md`. |
-| 6 maintenance. Camera capture libraries | `chore/camerax-1.5.3` | CameraX core/camera2/lifecycle/video/view 1.5.3 with the existing SDK/toolchain | Prepared for CI and independent review. Photo/video capture, camera switching and interruption phone checks pending. Pack: `handoffs/batch6-camerax-update.md`. |
+| 6 maintenance. Camera capture libraries | `chore/camerax-1.5.3` | CameraX core/camera2/lifecycle/video/view 1.5.3 with the existing SDK/toolchain | Merged in PR #26 (`9e65f05`). Tests, debug APK, schema, lint and R8 passed on `07dcd0c` (run 39558827196). Photo/video capture, camera switching and interruption phone checks pending. Pack: `handoffs/batch6-camerax-update.md`. |
+| 6 maintenance. Build toolchain migration | `chore/agp9-built-in-kotlin` | AGP 9.4.1, Gradle 9.8.2, built-in Kotlin/Compose compiler 2.4.21 and KSP 2.3.12 | Prepared for CI and independent review; declared app libraries and SDK levels stay fixed. Pack: `handoffs/batch6-toolchain-migration.md`. After merge, reassess/close #22 as superseded and record deferred updates; phone acceptance then precedes owner-started release. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
