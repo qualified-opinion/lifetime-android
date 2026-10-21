@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-21. Restore (PR #15, `d00e412`) and its cancellation fix (PR #16, `51ec760`) are merged. Batch 6 plans content-aware restore duplicate safety and release-readiness checks.
+**Last updated:** 2026-10-21. Restore (PR #15, `d00e412`) and its cancellation fix (PR #16, `51ec760`) are merged. Batch 6 duplicate-safety implementation is prepared on `fix/restore-content-duplicates`; CI, independent review and phone acceptance remain to be checked.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -21,7 +21,7 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Merged (PR #13, `90f846b`, 2026-10-18). Phone-to-phone transfer kept on (recommended default; Jan can still ask to block it). Pack: `handoffs/batch4-privacy-hardening.md` |
 | 5. Restore from export | `claude/project-thread-0wngww` | Read a Lifetime export zip back into the timeline, adding and never replacing | Merged (PR #15, `d00e412`, 2026-10-21). Cancellation follow-up merged in PR #16. Pack: `handoffs/batch5-restore-from-export.md` |
 | 5 follow-up. Restore cancellation | `fix/restore-scan-cancellation` | Stop ZIP scanning after cancellation in both passes | Merged (PR #16, `51ec760`, 2026-10-21). Tests, debug APK, schema check, lint and R8 passed on `d9a9173` (run 39542014075). |
-| 6. Restore duplicate safety and release readiness | `docs/release-readiness-plan` | Content-aware restore deduplication in a separate code PR, phone acceptance and dependency triage | Plan in PR #17; see `handoffs/batch6-release-readiness.md`. No duplicate-fix implementation or phone results claimed. |
+| 6. Restore duplicate safety and release readiness | `docs/release-readiness-plan` | Content-aware restore deduplication in a separate code PR, phone acceptance and dependency triage | Plan merged in PR #17 (`eb7ccc0`). Duplicate fix prepared on `fix/restore-content-duplicates`; see PR checks for CI. Independent review and phone acceptance pending. Pack: `handoffs/batch6-release-readiness.md`. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
@@ -80,13 +80,13 @@ Follow-up build (`86f31e3`) retested by Jan on 2026-10-17: imported photo GPS an
 Still not individually documented: process death during the post-capture location wait, and partial-ZIP cleanup after failed/cancelled export. Jan's broad batch-1 pass is recorded above without claiming each fault scenario was reproduced.
 
 ## Facts a new owner needs
-- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`, which includes captions) is the backup, and **Restore from export** reads it back in (adds only, skips moments already there by time, type and size; works between the debug and signed apps).
+- Media is stored in app-private storage (`files/media/YYYY/MM/...`), so uninstalling the app deletes it. **Export everything** (zip with `moments.json`, which includes captions) is the backup, and **Restore from export** reads it back in (adds only, skips moments only when time, type, size and SHA-256 media content match; works between the debug and signed apps).
 - Order of operations on capture: commit the file and insert the row first, fetch location afterwards and update the row.
 - Date for an imported item comes from, in order: embedded EXIF or video date, provider date taken, date parsed from the file name, provider last modified, then now. Items that fell back to now are counted in the import message.
 - A location of exactly 0,0 is rejected everywhere it is parsed.
 - Room entity changes need a version bump, a non-destructive migration and a `MigrationTest` case. Room is at version 2 since the captions batch (first migration: adds `caption`). Export a backup before installing a build that changes the database. The schema in `app/schemas` must be committed (CI checks it).
 - Permissions today: camera, microphone, coarse and fine location (optional, off by default), `ACCESS_MEDIA_LOCATION` (requested at runtime on first import), and `USE_BIOMETRIC` from the biometric library (install-time, for the app lock). Do not add `INTERNET` or storage permissions.
-- Restore: timeline menu > Restore from export (.zip) reads an export back in. It only adds moments, skips ones already there (same time, type and size), and works across the debug and signed apps.
+- Restore: timeline menu > Restore from export (.zip) reads an export back in. It only adds moments, skips ones already there (same time, type, size and SHA-256 media content), and works across the debug and signed apps.
 - Privacy: screenshots are blocked by default (timeline menu > Block screenshots). The app lock is off by default and uses the phone's own unlock; there is no separate app PIN to forget.
 - Every push builds a debug APK and publishes it as a prerelease named after the branch (not for Dependabot). The owner installs from the Releases page. CI also runs lint and a minified release build.
 - Signed releases: the owner runs **Signed release** from the Actions tab on `main` with a version such as `0.2.0`. It tests, builds, signs with the keystore in the `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets, and publishes release `v<version>`. Losing that keystore means the app can no longer be updated in place, so keep a backup. The signed app (`app.lifetime`) is separate from the debug app (`app.lifetime.debug`) and does not see its moments.

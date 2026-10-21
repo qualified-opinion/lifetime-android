@@ -39,8 +39,15 @@ class MediaStorage(
 
     /**
      * Moves a finished temp file into its year/month folder and returns its relative path.
+     * Reserved paths protect existing database references even when their files are missing.
      */
-    fun commit(temp: File, type: MediaType, capturedAt: Long, extension: String): String {
+    fun commit(
+        temp: File,
+        type: MediaType,
+        capturedAt: Long,
+        extension: String,
+        reservedPaths: Set<String> = emptySet(),
+    ): String {
         val time = Instant.ofEpochMilli(capturedAt).atZone(zone())
         val folder = String.format(Locale.ROOT, "%04d/%02d", time.year, time.monthValue)
         val prefix = if (type == MediaType.VIDEO) "VID" else "IMG"
@@ -49,7 +56,7 @@ class MediaStorage(
         val dir = File(root, folder).apply { mkdirs() }
         var name = "${prefix}_$stamp.$extension"
         var n = 1
-        while (File(dir, name).exists()) {
+        while (File(dir, name).exists() || "$folder/$name" in reservedPaths) {
             name = "${prefix}_${stamp}_${n++}.$extension"
         }
         val target = File(dir, name)

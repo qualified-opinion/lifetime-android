@@ -25,6 +25,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.zip.ZipEntry
@@ -98,6 +99,115 @@ class RestoreTest {
         assertEquals(MomentRepository.RestoreResult(0, 2, 0), first)
         assertEquals(MomentRepository.RestoreResult(0, 2, 0), second)
         assertEquals(2, phone.moments().size)
+        phone.assertConsistent()
+    }
+
+    @Test fun distinctCollidingFilesRestoreAndRepeatedZipAddsNothing() = runBlocking {
+        val files = linkedMapOf(
+            "media/a.jpg" to ByteArray(100) { 1 },
+            "media/b.jpg" to ByteArray(100) { 2 },
+            "media/a-again.jpg" to ByteArray(100) { 1 },
+        )
+        val zip = handMadeZip(files, files.keys.map { entry(it) })
+        val phone = Phone("one")
+
+        assertEquals(MomentRepository.RestoreResult(2, 1, 0), phone.repository.restore({ zip.inputStream() }))
+        assertEquals(MomentRepository.RestoreResult(0, 3, 0), phone.repository.restore({ zip.inputStream() }))
+        assertEquals(setOf(1.toByte(), 2.toByte()), phone.moments().map { phone.storage.fileFor(it).readBytes().first() }.toSet())
+        phone.assertConsistent()
+    }
+
+    @Test fun existingCollisionsPreserveMediaAndCaptions() = runBlocking {
+        val phone = Phone("one")
+        val first = phone.repository.addCaptured(phone.capture(3), MediaType.PHOTO, 1_000)
+        val second = phone.repository.addCaptured(phone.capture(7), MediaType.PHOTO, 1_000)
+        phone.repository.setCaption(first.id, "keep first")
+        phone.repository.setCaption(second.id, "keep second")
+        val before = phone.moments()
+        val originalBytes = before.associate { it.id to phone.storage.fileFor(it).readBytes() }
+        val files = linkedMapOf(
+            "media/match.jpg" to phone.storage.fileFor(first).readBytes(),
+            "media/new.jpg" to ByteArray(4_096) { 42 },
+        )
+        val zip = handMadeZip(files, files.keys.map {
+            entry(it, capturedAt = Instant.ofEpochMilli(1_000).toString(), caption = "from backup")
+        })
+
+        assertEquals(MomentRepository.RestoreResult(1, 1, 0), phone.repository.restore({ zip.inputStream() }))
+        before.forEach { old ->
+            assertEquals(old, phone.repository.get(old.id))
+            assertArrayEquals(originalBytes.getValue(old.id), phone.storage.fileFor(old).readBytes())
+        }
+        assertEquals("from backup", phone.moments().single { it.id !in before.map { old -> old.id } }.caption)
+        phone.assertConsistent()
+    }
+
+    @Test fun missingExistingFileDoesNotSuppressBackedUpCopy() = runBlocking {
+        val phone = Phone("one")
+        val old = phone.repository.addCaptured(phone.capture(3), MediaType.PHOTO, 1_000)
+        val bytes = phone.storage.fileFor(old).readBytes()
+        assertTrue(phone.storage.fileFor(old).delete())
+        val zip = handMadeZip(mapOf("media/a.jpg" to bytes), listOf(entry("media/a.jpg", Instant.ofEpochMilli(1_000).toString())))
+
+        assertEquals(MomentRepository.RestoreResult(1, 0, 0), phone.repository.restore({ zip.inputStream() }))
+        assertEquals(old, phone.repository.get(old.id)) // Existing broken row is never rewritten.
+        val restored = phone.moments().single { it.id != old.id }
+        assertNotEquals(old.relativePath, restored.relativePath)
+        assertFalse(phone.storage.fileFor(old).exists())
+        assertArrayEquals(bytes, phone.storage.fileFor(restored).readBytes())
+        assertTrue(phone.incoming.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test fun unreadableExistingFileDoesNotSuppressBackedUpCopy() = runBlocking {
+        val phone = Phone("one")
+        val old = phone.repository.addCaptured(phone.capture(3), MediaType.PHOTO, 1_000)
+        val existingFile = phone.storage.fileFor(old)
+        val zip = handMadeZip(mapOf("media/a.jpg" to existingFile.readBytes()), listOf(entry("media/a.jpg", Instant.ofEpochMilli(1_000).toString())))
+
+        val result = phone.repository.restore(
+            openZip = { zip.inputStream() },
+            openDuplicateFile = { if (it == existingFile) throw IOException("unreadable") else it.inputStream() },
+        )
+        assertEquals(MomentRepository.RestoreResult(1, 0, 0), result)
+        assertEquals(old, phone.repository.get(old.id))
+        phone.assertConsistent()
+    }
+
+    @Test fun cancellingWhileHashingIncomingCleansUp() = assertHashCancellation(existingFile = false)
+
+    @Test fun cancellingWhileHashingExistingCleansUp() = assertHashCancellation(existingFile = true)
+
+    private fun assertHashCancellation(existingFile: Boolean) = runBlocking {
+        val phone = Phone("one")
+        val old = phone.repository.addCaptured(phone.capture(3), MediaType.PHOTO, 1_000)
+        val oldFile = phone.storage.fileFor(old)
+        val original = oldFile.readBytes()
+        val zip = handMadeZip(mapOf("media/a.jpg" to original), listOf(entry("media/a.jpg", Instant.ofEpochMilli(1_000).toString())))
+        var closed = false
+        val restore = async(Dispatchers.IO) {
+            val job = currentCoroutineContext()[Job]!!
+            phone.repository.restore(
+                openZip = { zip.inputStream() },
+                openDuplicateFile = { file ->
+                    if ((file == oldFile) == existingFile) object : FilterInputStream(file.inputStream()) {
+                        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                            val count = `in`.read(buffer, offset, length)
+                            job.cancel()
+                            return count
+                        }
+                        override fun close() { super.close(); closed = true }
+                    } else file.inputStream()
+                },
+            )
+        }
+        try {
+            restore.await()
+            fail("Expected hashing to stop on cancellation")
+        } catch (expected: CancellationException) {
+        }
+        assertTrue("Hash stream must close", closed)
+        assertEquals(listOf(old), phone.moments())
+        assertArrayEquals(original, oldFile.readBytes())
         phone.assertConsistent()
     }
 

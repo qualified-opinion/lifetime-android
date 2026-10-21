@@ -3,7 +3,7 @@
 Repo: qualified-opinion/lifetime-android.
 Plan branch: `docs/release-readiness-plan`, updated against main `51ec760`.
 Owner request: Jan asked to merge the current fix and proceed to the next plan on 2026-10-21.
-Status: plan only. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
+Status: duplicate-safety implementation prepared on `fix/restore-content-duplicates`; independent review and phone acceptance remain pending. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
 
 ## Goal
 Confirm the completed features work together on Jan's phone before another signed release, and split dependency maintenance into reviewable changes.
@@ -12,6 +12,12 @@ Confirm the completed features work together on Jan's phone before another signe
 - Completed: restore merged in PR #15 (`d00e412`), followed by its cancellation fix in PR #16 (`51ec760`). PR #16's final head `d9a9173` passed unit tests, debug build, schema check, lint and R8 in run 39542014075.
 - Base the duplicate-safety implementation on current main, including both merged PRs. Keep its independent review and CI requirements before merge.
 - Preserve a known-good export outside app-private storage before device testing. Keep the installed app and its moments; no uninstall is needed to test restore.
+
+## Duplicate-safety implementation
+- `RestoreDuplicates` indexes time/type/size candidates and hashes media with SHA-256 only for candidate matches. Candidate digests are reused during one restore.
+- Unreadable or missing existing files are logged and cannot suppress an incoming backup copy. Restore reserves every existing database path when filing the new copy, including paths whose file is missing, so two rows never share the restored file.
+- Hashing streams with a fixed-size buffer on IO and checks cancellation before and after each read. Tests cover content collisions, repeated ZIP restores, unchanged existing media/captions, unreadable/missing candidates, digest reuse, candidate order and cancellation during both incoming and existing-file hashing.
+- No new dependency, database/schema change or permission. Existing version-1 export ZIPs remain supported. CI results belong to the implementation PR; no device result is claimed.
 
 ## Phone acceptance checklist (Jan)
 Record phone model, Android version, installed version/build and the result for each check.

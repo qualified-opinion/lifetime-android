@@ -350,12 +350,12 @@ class MomentRepository(
 
     /**
      * Reads a Lifetime export zip back into the timeline. Adds moments, never replaces or
-     * deletes any. A moment already here (same time, type and size) is skipped.
+     * deletes any. A moment is skipped only when time, type, size and media content match.
      */
     suspend fun restore(
         zip: Uri,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
-    ): RestoreResult = restore({ context.contentResolver.openInputStream(zip) }, onProgress)
+    ): RestoreResult = restore({ context.contentResolver.openInputStream(zip) }, onProgress = onProgress)
 
     /**
      * Two passes over the zip, because moments.json is its last entry: first read the index,
@@ -363,12 +363,21 @@ class MomentRepository(
      */
     internal suspend fun restore(
         openZip: () -> InputStream?,
+        openDuplicateFile: (File) -> InputStream = { it.inputStream() },
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): RestoreResult = withContext(Dispatchers.IO) {
         val index = ExportIndex.parse(readExportIndex(openZip))
         val pending = index.entries.associateBy { it.file }.toMutableMap()
         val total = pending.size
-        val existing = dao.getAll().mapTo(HashSet()) { RestoreKey(it.capturedAt, it.type, it.sizeBytes) }
+        val moments = dao.getAll()
+        val reservedPaths = moments.mapTo(HashSet()) { it.relativePath }
+        val existing = RestoreDuplicates(
+            openFile = openDuplicateFile,
+            onUnreadable = { file, failure -> Log.w(TAG, "Cannot verify restore duplicate $file; keeping incoming copy", failure) },
+        )
+        moments.forEach {
+            existing.add(RestoreDuplicates.Key(it.capturedAt, it.type, it.sizeBytes), storage.fileFor(it))
+        }
         var restored = 0
         var alreadyHere = 0
         var failed = index.refused
@@ -380,7 +389,7 @@ class MomentRepository(
                 val zipEntry = zip.nextEntry ?: break
                 val entry = pending.remove(zipEntry.name) ?: continue
                 try {
-                    if (restoreOne(entry, zip, existing)) restored++ else alreadyHere++
+                    if (restoreOne(entry, zip, existing, reservedPaths)) restored++ else alreadyHere++
                 } catch (cancelled: CancellationException) {
                     // A real cancel stops the restore here; a stray one only fails that item.
                     ensureActive()
@@ -396,8 +405,6 @@ class MomentRepository(
         failed += pending.size // listed in moments.json but missing from the zip
         RestoreResult(restored, alreadyHere, failed)
     }
-
-    private data class RestoreKey(val capturedAt: Long, val type: MediaType, val size: Long)
 
     /**
      * Check cancellation below ZipInputStream too: nextEntry drains unselected entries,
@@ -440,7 +447,12 @@ class MomentRepository(
     }
 
     /** Returns false if the moment was already in the timeline. */
-    private suspend fun restoreOne(entry: ExportIndex.Entry, source: InputStream, existing: MutableSet<RestoreKey>): Boolean {
+    private suspend fun restoreOne(
+        entry: ExportIndex.Entry,
+        source: InputStream,
+        existing: RestoreDuplicates,
+        reservedPaths: MutableSet<String>,
+    ): Boolean {
         val temp = storage.newTempFile(entry.extension)
         try {
             temp.outputStream().use { dst ->
@@ -453,14 +465,14 @@ class MomentRepository(
                 }
             }
             val size = temp.length()
-            val key = RestoreKey(entry.capturedAt, entry.type, size)
-            if (key in existing) return false
+            val key = RestoreDuplicates.Key(entry.capturedAt, entry.type, size)
+            if (existing.contains(key, temp)) return false
             currentCoroutineContext().ensureActive()
             // Complete the file/row pair together even if cancellation arrives during the insert.
             withContext(NonCancellable) {
                 var committed: File? = null
                 try {
-                    val relativePath = storage.commit(temp, entry.type, entry.capturedAt, entry.extension)
+                    val relativePath = storage.commit(temp, entry.type, entry.capturedAt, entry.extension, reservedPaths)
                     committed = File(storage.root, relativePath)
                     insert(
                         Moment(
@@ -479,12 +491,13 @@ class MomentRepository(
                             caption = entry.caption,
                         ),
                     )
+                    existing.add(key, committed)
+                    reservedPaths.add(relativePath)
                 } catch (failure: Throwable) {
                     committed?.let { if (!it.delete()) Log.w(TAG, "Couldn't delete committed restore $it", failure) }
                     throw failure
                 }
             }
-            existing.add(key)
             return true
         } finally {
             temp.delete() // no-op once committed
