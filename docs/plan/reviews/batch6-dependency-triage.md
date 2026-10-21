@@ -62,7 +62,6 @@ Room 2.7.2 merged in PR #21 (`a55b4da`); run 39551344760 passed on `3a48737`, in
 
 Next, update the existing Fragment dependency from 1.8.6 to 1.8.9 within its current release series. MainActivity is a FragmentActivity because BiometricPrompt needs a fragment host. The [official release notes](https://developer.android.com/jetpack/androidx/releases/fragment#1.8.9) include lifecycle/back-stack fixes across 1.8.7-1.8.9; 1.8.8 specifically fixes saving a fragment capped at INITIALIZED before onCreate. Add a real host/FragmentManager save-and-restore regression for that case, without claiming device biometric verification. See `../handoffs/batch6-fragment-patch.md`. Fragment 1.9, Android build-tool migration and biometric-library changes remain separate.
 
-
 ## Media3 maintenance step
 Fragment 1.8.9 merged in PR #23 (`fda75a8`); run 39553665382 passed on `410e2b6`, including host save/restore on APIs 26/33.
 

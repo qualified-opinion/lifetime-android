@@ -26,7 +26,6 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 6 maintenance. Photo metadata library | `chore/exifinterface-1.4.2` | ExifInterface 1.4.2 only, with a padded JPEG marker import regression | Merged in PR #20 (`22162e4`). Tests (including padded JPEG import on APIs 28/33), debug APK, schema, lint and R8 passed on `f1e7ba4` (run 39549903929). Phone retest pending. Details: `handoffs/batch6-exifinterface-update.md`. |
 | 6 maintenance. Room patch | `chore/room-2.7.2` | Room runtime/ktx/compiler 2.7.2; existing v2 persistence and v1 migration checks | Merged in PR #21 (`a55b4da`). Tests (including v2 reopen on APIs 26/33 and v1 migration), debug APK, schema, lint and R8 passed on `3a48737` (run 39551344760). Database remains v2. Pack: `handoffs/batch6-room-patch.md`. Phone retest pending. |
 | 6 maintenance. Fragment patch | `chore/fragment-1.8.9` | Fragment 1.8.9; saving/restoring an INITIALIZED fragment in a FragmentActivity | Merged in PR #23 (`fda75a8`). Tests (including initialized-fragment save/restore on APIs 26/33), debug APK, schema, lint and R8 passed on `410e2b6` (run 39553665382). Phone authentication retest pending. Pack: `handoffs/batch6-fragment-patch.md`. |
-
 | 6 maintenance. Video playback library | `chore/media3-1.8.0` | Media3 ExoPlayer/UI 1.8.0 with the existing SDK/toolchain | Prepared for CI and independent review. Local video playback, Bluetooth audio, seeking and page/background transitions need phone checks. Pack: `handoffs/batch6-media3-update.md`. |
 
 ## Captions (merged, PR #9)
