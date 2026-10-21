@@ -3,14 +3,14 @@
 Repo: qualified-opinion/lifetime-android.
 Plan branch: `docs/release-readiness-plan`, updated against main `51ec760`.
 Owner request: Jan asked to merge the current fix and proceed to the next plan on 2026-10-21.
-Status: duplicate-safety implementation prepared on `fix/restore-content-duplicates`; independent review and phone acceptance remain pending. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
+Status: duplicate safety merged in PR #18 (`057d137`), after independent review and green CI on `2ece771` (run 39545621054). Dependency triage is recorded in `../reviews/batch6-dependency-triage.md`; an Actions-only refresh is prepared on `chore/ci-actions-refresh`. Phone acceptance remains pending. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
 
 ## Goal
 Confirm the completed features work together on Jan's phone before another signed release, and split dependency maintenance into reviewable changes.
 
 ## Prerequisites
 - Completed: restore merged in PR #15 (`d00e412`), followed by its cancellation fix in PR #16 (`51ec760`). PR #16's final head `d9a9173` passed unit tests, debug build, schema check, lint and R8 in run 39542014075.
-- Base the duplicate-safety implementation on current main, including both merged PRs. Keep its independent review and CI requirements before merge.
+- Completed: content-aware duplicate safety merged in PR #18 (`057d137`); its final head `2ece771` passed tests, debug APK, schema check, lint and R8 in run 39545621054.
 - Preserve a known-good export outside app-private storage before device testing. Keep the installed app and its moments; no uninstall is needed to test restore.
 
 ## Duplicate-safety implementation
@@ -37,8 +37,8 @@ Record phone model, Android version, installed version/build and the result for 
 - File or fix reproducible acceptance failures on a feature branch with targeted regression tests. Data loss, crashes and lock-out take priority.
 - Implement the content-aware duplicate fix below as a separate application PR before the next signed release.
 
-## Required restore duplicate fix (separate PR)
-The current time/type/size heuristic can silently skip a different file. Existing moments stay intact, but a genuine backed-up moment may never be added. Treat this as a release blocker, not merely a documented limitation.
+## Restore duplicate-fix contract (implemented in PR #18)
+The previous time/type/size heuristic could silently skip a different file. Existing moments stay intact, but a genuine backed-up moment may never be added. PR #18 addresses this release blocker with the content-aware implementation below.
 
 - Keep time/type/size only as a candidate filter. Skip a candidate only when its media content also matches, using a streaming SHA-256 digest of the incoming file and the existing candidate files. Index new successful restores too, so duplicates within one ZIP behave consistently.
 - If contents differ, restore both moments even when time, type and size match. Do not rewrite existing rows, media, captions or locations.
