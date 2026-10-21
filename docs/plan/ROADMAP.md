@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-21. Fragment patch merged in PR #23 (`fda75a8`). The next isolated dependency update is Media3 1.6.1 to 1.8.0 on `chore/media3-1.8.0`, keeping the existing SDK and toolchain. Phone acceptance remains pending.
+**Last updated:** 2026-10-21. Media3 update merged in PR #24 (`0056cf3`). The next isolated dependency update is Coil 3.1.0 to 3.2.0 on `chore/coil-3.2.0`, keeping the existing SDK and toolchain. Phone acceptance remains pending.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -26,7 +26,8 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 6 maintenance. Photo metadata library | `chore/exifinterface-1.4.2` | ExifInterface 1.4.2 only, with a padded JPEG marker import regression | Merged in PR #20 (`22162e4`). Tests (including padded JPEG import on APIs 28/33), debug APK, schema, lint and R8 passed on `f1e7ba4` (run 39549903929). Phone retest pending. Details: `handoffs/batch6-exifinterface-update.md`. |
 | 6 maintenance. Room patch | `chore/room-2.7.2` | Room runtime/ktx/compiler 2.7.2; existing v2 persistence and v1 migration checks | Merged in PR #21 (`a55b4da`). Tests (including v2 reopen on APIs 26/33 and v1 migration), debug APK, schema, lint and R8 passed on `3a48737` (run 39551344760). Database remains v2. Pack: `handoffs/batch6-room-patch.md`. Phone retest pending. |
 | 6 maintenance. Fragment patch | `chore/fragment-1.8.9` | Fragment 1.8.9; saving/restoring an INITIALIZED fragment in a FragmentActivity | Merged in PR #23 (`fda75a8`). Tests (including initialized-fragment save/restore on APIs 26/33), debug APK, schema, lint and R8 passed on `410e2b6` (run 39553665382). Phone authentication retest pending. Pack: `handoffs/batch6-fragment-patch.md`. |
-| 6 maintenance. Video playback library | `chore/media3-1.8.0` | Media3 ExoPlayer/UI 1.8.0 with the existing SDK/toolchain | Prepared for CI and independent review. Local video playback, Bluetooth audio, seeking and page/background transitions need phone checks. Pack: `handoffs/batch6-media3-update.md`. |
+| 6 maintenance. Video playback library | `chore/media3-1.8.0` | Media3 ExoPlayer/UI 1.8.0 with the existing SDK/toolchain | Merged in PR #24 (`0056cf3`) at the owner's request. Tests, debug APK, schema, lint and R8 passed on `a59f4ff` (run 39556054312). No independent review recorded; playback phone checks pending. Pack: `handoffs/batch6-media3-update.md`. |
+| 6 maintenance. Image and video thumbnails | `chore/coil-3.2.0` | Coil compose/video 3.2.0 with the existing SDK/toolchain | Prepared for CI and independent review. Photo orientation, zoom and video thumbnail phone checks pending. Pack: `handoffs/batch6-coil-update.md`. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
