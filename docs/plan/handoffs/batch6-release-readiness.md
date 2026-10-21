@@ -1,16 +1,16 @@
 # Batch 6: release readiness
 
 Repo: qualified-opinion/lifetime-android.
-Plan branch: `docs/release-readiness-plan`, updated against main `d00e412`.
+Plan branch: `docs/release-readiness-plan`, updated against main `51ec760`.
 Owner request: Jan asked to merge the current fix and proceed to the next plan on 2026-10-21.
-Status: plan only. Restore is merged in PR #15 (`d00e412`, 2026-10-21). PR #16 now targets main for the missing cancellation fix; no release or device success is claimed.
+Status: plan only. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
 
 ## Goal
 Confirm the completed features work together on Jan's phone before another signed release, and split dependency maintenance into reviewable changes.
 
 ## Prerequisites
-- Obtain the required independent review for PR #16's updated head. Its application fix and tests are unchanged from `2728310`, which passed unit tests, debug build, schema check, lint and R8 in run 39514164693; CI must also pass on the refreshed head.
-- Merge #16 directly into main. PR #15 is already merged, so its completed feature branch is no longer a target. Automatic approval review previously blocked #16 because independent review was missing; do not bypass that block.
+- Completed: restore merged in PR #15 (`d00e412`), followed by its cancellation fix in PR #16 (`51ec760`). PR #16's final head `d9a9173` passed unit tests, debug build, schema check, lint and R8 in run 39542014075.
+- Base the duplicate-safety implementation on current main, including both merged PRs. Keep its independent review and CI requirements before merge.
 - Preserve a known-good export outside app-private storage before device testing. Keep the installed app and its moments; no uninstall is needed to test restore.
 
 ## Phone acceptance checklist (Jan)

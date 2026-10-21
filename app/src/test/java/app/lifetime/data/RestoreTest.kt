@@ -2,6 +2,9 @@ package app.lifetime.data
 
 import android.app.Application
 import androidx.room.Room
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -158,6 +161,47 @@ class RestoreTest {
         job.cancelAndJoin()
 
         assertTrue(phone.moments().size in 1..4)
+        phone.assertConsistent()
+    }
+
+    @Test fun cancellingWhileScanningForIndexStopsReading() = assertScanCancellation(cancelPass = 1)
+
+    @Test fun cancellingWhileSkippingUnlistedMediaStopsReading() = assertScanCancellation(cancelPass = 2)
+
+    private fun assertScanCancellation(cancelPass: Int) = runBlocking {
+        // Incompressible media forces multiple underlying reads while nextEntry drains it.
+        val filler = kotlin.random.Random(42).nextBytes(200_000)
+        val zip = handMadeZip(
+            linkedMapOf("media/unlisted.jpg" to filler, "media/wanted.jpg" to ByteArray(100)),
+            listOf(entry("media/wanted.jpg")),
+        )
+        val phone = Phone("one")
+        var opened = 0
+        var bytesAfterCancellation = 0
+        val restore = async(Dispatchers.IO) {
+            val restoreJob = currentCoroutineContext()[Job]!!
+            phone.repository.restore(openZip = {
+                val input = zip.inputStream()
+                if (++opened != cancelPass) input else object : FilterInputStream(input) {
+                    private var bytes = 0
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                        val count = `in`.read(buffer, offset, length)
+                        if (restoreJob.isCancelled && count > 0) bytesAfterCancellation += count
+                        if (count > 0) bytes += count
+                        if (bytes >= 16_384) restoreJob.cancel()
+                        return count
+                    }
+                }
+            })
+        }
+        try {
+            restore.await()
+            fail("Expected cancellation")
+        } catch (expected: CancellationException) {
+        }
+        assertEquals(cancelPass, opened)
+        assertEquals("Must stop reading as soon as cancellation is observed", 0, bytesAfterCancellation)
+        assertTrue(phone.moments().isEmpty())
         phone.assertConsistent()
     }
 
