@@ -96,6 +96,33 @@ class TimelineViewModel internal constructor(
         }
     }
 
+    fun restore(zip: Uri) = restore { progress -> repository.restore(zip, progress) }
+
+    internal fun restore(
+        read: suspend ((Int, Int) -> Unit) -> MomentRepository.RestoreResult,
+    ) = scope.launch {
+        _busy.value = Busy("Restoring…")
+        try {
+            val result = read { done, total ->
+                if (total > 1) _busy.value = Busy("Restoring $done of $total…", done / total.toFloat())
+            }
+            _messages.trySend(buildString {
+                append(if (result.restored == 1) "Restored 1 moment" else "Restored ${result.restored} moments")
+                val notes = buildList {
+                    if (result.alreadyHere > 0) add("${result.alreadyHere} already here")
+                    if (result.failed > 0) add("${result.failed} couldn't be read")
+                }
+                if (notes.isNotEmpty()) append(notes.joinToString(", ", " (", ")"))
+            })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            _messages.trySend("Restore failed: ${failure.message}")
+        } finally {
+            _busy.value = null
+        }
+    }
+
     /** Row index for a picked date: that day, or the closest earlier day that has moments. */
     fun rowIndexFor(date: LocalDate): Int? {
         val days = state.value.dayIndex

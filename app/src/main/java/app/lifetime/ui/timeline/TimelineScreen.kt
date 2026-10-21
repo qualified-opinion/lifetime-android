@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.DatePicker
@@ -149,6 +150,11 @@ fun TimelineScreen(
         }
     }
 
+    // Providers label zips differently, so accept the common types and let the restore check it.
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) vm.restore(uri) }
+
     // "Save as" dialog for the export zip, so the user chooses where it lands.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -197,6 +203,15 @@ fun TimelineScreen(
                             onClick = {
                                 menuOpen = false
                                 exportLauncher.launch("lifetime-export-${LocalDate.now()}.zip")
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Restore from export (.zip)") },
+                            leadingIcon = { Icon(Icons.Outlined.Restore, null) },
+                            enabled = busy == null,
+                            onClick = {
+                                menuOpen = false
+                                restoreLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
                             },
                         )
                         DropdownMenuItem(
