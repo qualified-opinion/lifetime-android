@@ -3,7 +3,7 @@
 Repo: qualified-opinion/lifetime-android.
 Plan branch: `docs/release-readiness-plan`, updated against main `51ec760`.
 Owner request: Jan asked to merge the current fix and proceed to the next plan on 2026-10-21.
-Status: duplicate safety merged in PR #18 (`057d137`), after independent review and green CI on `2ece771` (run 39545621054). Dependency triage is recorded in `../reviews/batch6-dependency-triage.md`; an Actions-only refresh is prepared on `chore/ci-actions-refresh`. Phone acceptance remains pending. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
+Status: duplicate safety merged in PR #18 (`057d137`), after independent review and green CI on `2ece771` (run 39545621054). Dependency triage is recorded in `../reviews/batch6-dependency-triage.md`; the Actions refresh is merged in PR #19 (`e893414`), with both build and unsigned release checks passed. ExifInterface 1.4.2 is the next isolated runtime update, on `chore/exifinterface-1.4.2` (see `batch6-exifinterface-update.md`). Phone acceptance remains pending. Restore is merged in PR #15 (`d00e412`, 2026-10-21). The cancellation fix is also merged in PR #16 (`51ec760`, 2026-10-21); no release or device success is claimed.
 
 ## Goal
 Confirm the completed features work together on Jan's phone before another signed release, and split dependency maintenance into reviewable changes.

@@ -46,3 +46,8 @@ Handle runtime libraries separately from the toolchain:
 3. Only combine further runtime updates after that toolchain branch is green and reviewed. Do not merge #14 as a shortcut.
 
 This report selects an upgrade order and identifies the observed failure; it does not claim compatibility for untested runtime or toolchain versions. Phone acceptance from the batch 6 handoff is still pending.
+
+## Progress after the Actions refresh
+PR #19 merged as `e893414`. Build APK run 39547965764 and unsigned release run 39547965783 passed on `21f5c6b`; logs confirmed basic caching. The old grouped Actions proposal #11 is superseded by that implementation.
+
+The next isolated runtime change is ExifInterface 1.3.7 to 1.4.2 on `chore/exifinterface-1.4.2`. Its [official release notes](https://developer.android.com/jetpack/androidx/releases/exifinterface#1.4.2) describe the padded JPEG marker parser fix. See `../handoffs/batch6-exifinterface-update.md` for the real document-import regression, fixed-toolchain compatibility checks and phone retest. No other declared dependency or SDK level is raised by this change. The broad #14 toolchain migration remains unmerged.

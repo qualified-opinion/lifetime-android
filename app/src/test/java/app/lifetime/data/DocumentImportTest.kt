@@ -40,6 +40,9 @@ class DocumentImportTest {
     @Test fun originalRequestFailureFallsBackToSelectedDocument() =
         importSelectedOriginal(grantMediaLocation = true)
 
+    @Test fun selectedJpegWithMarkerFillBytesKeepsGpsDateAndOriginalBytes() =
+        importSelectedOriginal(grantMediaLocation = false, markerFillBytes = true)
+
     @Test fun onlyMediaSourcesAreConvertedForOriginalAccess() {
         val media = Uri.parse("content://media/external/images/media/12")
         val mediaDocument = Uri.parse("content://$MEDIA_DOCUMENTS_AUTHORITY/document/image%3A12")
@@ -49,7 +52,7 @@ class DocumentImportTest {
         assertNull(originalMediaUri(localFile) { error("Must not convert other providers") })
     }
 
-    private fun importSelectedOriginal(grantMediaLocation: Boolean) = runBlocking {
+    private fun importSelectedOriginal(grantMediaLocation: Boolean, markerFillBytes: Boolean = false) = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         if (grantMediaLocation) shadowOf(context).grantPermissions(Manifest.permission.ACCESS_MEDIA_LOCATION)
         val original = tmp.newFile("original.jpg")
@@ -61,6 +64,16 @@ class DocumentImportTest {
             setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, "2026:10:16 14:32:15")
             setAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL, "+08:00")
             saveAttributes()
+        }
+        if (markerFillBytes) {
+            // JPEG permits extra 0xFF fill bytes before a marker. ExifInterface 1.4.2
+            // fixes reading these; pad the EXIF APP1 marker after writing the real tags.
+            val bytes = original.readBytes()
+            val app1 = (0 until bytes.size - 1).first {
+                bytes[it] == 0xFF.toByte() && bytes[it + 1] == 0xE1.toByte()
+            }
+            original.writeBytes(bytes.copyOfRange(0, app1) +
+                byteArrayOf(0xFF.toByte(), 0xFF.toByte()) + bytes.copyOfRange(app1, bytes.size))
         }
         val authority = MEDIA_DOCUMENTS_AUTHORITY
         val selected = Uri.parse("content://$authority/document/image%3A12")
