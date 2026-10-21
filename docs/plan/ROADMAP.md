@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-18. Batch 3 (guardrails) merged (PR #10) and Jan turned on branch protection for `main`. Jan said to proceed to batch 4 (privacy hardening), which is planned and built in one PR that needs review and his OK.
+**Last updated:** 2026-10-21. Batch 4 is merged. Restore (PR #15) and its cancellation fix (PR #16) remain open; the merge attempt for #16 was blocked because independent review is not recorded. Batch 6 release-readiness plan is prepared in `handoffs/batch6-release-readiness.md`.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -18,7 +18,10 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | Signed release workflow | `claude/project-thread-49hd2l` | Owner-started workflow that builds, signs and publishes a release APK | Merged (PR #7, #8). Uses the owner's existing signing secrets; v0.2.0 published |
 | Captions | `claude/project-thread-vv7hb1` | Write a caption right after capture or later in the viewer; shown under the photo in the timeline and kept in the export. First Room migration (v1 to v2) | Merged (PR #9, `53fab94`, 2026-10-18). Pack: `handoffs/captions.md` |
 | 3. Guardrails: lint, R8 and CI | `claude/project-thread-rfyq2b` | Lint and a minified release build in CI, Dependabot, import cancellation leftover | Merged (PR #10, `7743a2f`, 2026-10-18). Branch protection on `main` turned on by Jan. Pack: `handoffs/batch3-guardrails.md` |
-| 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Built by Claude Code after Jan's go (2026-10-18). Needs review and his OK. Pack: `handoffs/batch4-privacy-hardening.md` |
+| 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Merged (PR #13, `90f846b`). Pack: `handoffs/batch4-privacy-hardening.md` |
+| 5. Restore from export | `claude/project-thread-0wngww` | Read a Lifetime backup into the timeline | Open PR #15; cancellation follow-up #16 targets this branch. Merge follow-up first, then validate the updated #15. |
+| 5 follow-up. Restore cancellation | `fix/restore-scan-cancellation` | Stop ZIP scanning after cancellation in both passes | Open PR #16; CI passed on `2728310`. Independent review not recorded; merge attempt blocked. |
+| 6. Release readiness | `docs/release-readiness-plan` | Phone acceptance checks, review closure and dependency triage | Plan prepared after Jan asked to proceed on 2026-10-21. Pack: `handoffs/batch6-release-readiness.md`. No release or phone-test result claimed. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
@@ -36,7 +39,7 @@ Goal: catch breakage before it reaches the phone. Full plan in `handoffs/batch3-
 - Batch 2 review leftovers: a stray `CancellationException` now fails only that import item (`ensureActive()` in the catch). The orphan-delete log and the camera 0,0 check were already in place.
 - CI still runs `testDebugUnitTest assembleDebug` and fails if the Room schema in `app/schemas` is not committed.
 
-## Batch 4: privacy hardening (in review)
+## Batch 4: privacy hardening (merged, PR #13)
 Goal: someone holding the unlocked phone, or looking at recent apps, does not see the timeline. Full plan in `handoffs/batch4-privacy-hardening.md`. In short:
 - **Block screenshots** (menu switch, on by default): `FLAG_SECURE`, so recents shows a blank card and screenshots and screen recordings are blocked.
 - **App lock** (menu switch, off by default): the phone's own fingerprint, face or PIN via `BiometricPrompt`. Locks on a cold start and after 60 seconds in the background; unlocking returns to the same screen. If the phone loses its screen lock, the app opens and turns the lock off rather than lock Jan out.
