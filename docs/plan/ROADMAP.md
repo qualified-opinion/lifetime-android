@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-21. ExifInterface update merged in PR #20 (`22162e4`). The next isolated step is Room 2.7.1 to 2.7.2 on `chore/room-2.7.2`, preserving database v2 and the existing build toolchain. Phone acceptance remains pending.
+**Last updated:** 2026-10-21. Room patch merged in PR #21 (`a55b4da`). The next isolated dependency update is Fragment 1.8.6 to 1.8.9 on `chore/fragment-1.8.9`, with a host state-saving regression. Phone acceptance remains pending.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -24,7 +24,8 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 6. Restore duplicate safety and release readiness | `docs/release-readiness-plan` | Content-aware restore deduplication in a separate code PR, phone acceptance and dependency triage | Plan merged in PR #17 (`eb7ccc0`). Duplicate fix merged in PR #18 (`057d137`), after independent review; tests, debug APK, schema, lint and R8 passed on `2ece771` (run 39545621054). Phone acceptance pending. Pack: `handoffs/batch6-release-readiness.md`. |
 | 6 maintenance. CI Actions refresh | `chore/ci-actions-refresh` | Update workflow Actions using open-source basic Gradle caching; triage the broad Gradle upgrade separately | Merged in PR #19 (`e893414`). Build APK and unsigned release checks passed on `21f5c6b` (runs 39547965764 and 39547965783). Triage: `reviews/batch6-dependency-triage.md`. |
 | 6 maintenance. Photo metadata library | `chore/exifinterface-1.4.2` | ExifInterface 1.4.2 only, with a padded JPEG marker import regression | Merged in PR #20 (`22162e4`). Tests (including padded JPEG import on APIs 28/33), debug APK, schema, lint and R8 passed on `f1e7ba4` (run 39549903929). Phone retest pending. Details: `handoffs/batch6-exifinterface-update.md`. |
-| 6 maintenance. Room patch | `chore/room-2.7.2` | Room runtime/ktx/compiler 2.7.2; existing v2 persistence and v1 migration checks | Prepared for CI and independent review. Database remains v2; schema changes are not intended. Pack: `handoffs/batch6-room-patch.md`. Phone retest pending. |
+| 6 maintenance. Room patch | `chore/room-2.7.2` | Room runtime/ktx/compiler 2.7.2; existing v2 persistence and v1 migration checks | Merged in PR #21 (`a55b4da`). Tests (including v2 reopen on APIs 26/33 and v1 migration), debug APK, schema, lint and R8 passed on `3a48737` (run 39551344760). Database remains v2. Pack: `handoffs/batch6-room-patch.md`. Phone retest pending. |
+| 6 maintenance. Fragment patch | `chore/fragment-1.8.9` | Fragment 1.8.9; saving/restoring an INITIALIZED fragment in a FragmentActivity | Prepared for CI and independent review. App-lock behavior/settings are unchanged; phone authentication retest pending. Pack: `handoffs/batch6-fragment-patch.md`. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
