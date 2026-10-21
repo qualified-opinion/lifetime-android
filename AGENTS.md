@@ -13,6 +13,7 @@ Private, offline-first Android timeline of photos and videos. Kotlin, Compose (M
 - Keep diffs small and in scope of the batch pack. No new dependencies without a reason in the PR.
 
 ## Build and test
+AGP 9 supplies built-in Kotlin. Do not apply `org.jetbrains.kotlin.android` or opt out of the new DSL/built-in Kotlin. The shared Kotlin version aligns the KGP build classpath and Compose compiler; JVM target inherits Java 17 from `android.compileOptions`. Keep KSP and Room schema checks working when changing the toolchain.
 `./gradlew --no-daemon testDebugUnitTest assembleDebug` (this is what CI runs).
 
 ## Process
