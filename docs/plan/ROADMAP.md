@@ -2,7 +2,7 @@
 
 This file is the single place to learn what is done, what is next, and how work on Lifetime is run. Any agent or person can take over from here, including the owner working alone with Claude Code. Keep it current: every batch PR updates the status table below.
 
-**Last updated:** 2026-10-21. Restore (PR #15, `d00e412`) and its cancellation fix (PR #16, `51ec760`) are merged. Batch 6 duplicate-safety implementation is prepared on `fix/restore-content-duplicates`; CI, independent review and phone acceptance remain to be checked.
+**Last updated:** 2026-10-21. Restore and duplicate safety are merged through PR #18 (`057d137`). Batch 6 dependency triage is recorded in `reviews/batch6-dependency-triage.md`; an Actions-only refresh is prepared on `chore/ci-actions-refresh`. Phone acceptance remains pending.
 
 ## What Lifetime is
 A private, offline-first Android app that puts photos and videos in one calm timeline (year, month, day). You capture with CameraX or import original photos/videos with the system Files picker. Everything stays in app-private storage. There is no `INTERNET` permission, no accounts, no analytics and no cloud, and none of that changes. Package `app.lifetime`, `minSdk 26`, `targetSdk 35`, Kotlin, Compose (Material 3), Room (database version 2), Media3, Coil. Conventions are in `AGENTS.md`. Read it first.
@@ -21,7 +21,8 @@ A private, offline-first Android app that puts photos and videos in one calm tim
 | 4. Privacy hardening | `claude/project-thread-0wngww` | Privacy screen (on by default), optional app lock, explicit backup and phone-to-phone transfer rules | Merged (PR #13, `90f846b`, 2026-10-18). Phone-to-phone transfer kept on (recommended default; Jan can still ask to block it). Pack: `handoffs/batch4-privacy-hardening.md` |
 | 5. Restore from export | `claude/project-thread-0wngww` | Read a Lifetime export zip back into the timeline, adding and never replacing | Merged (PR #15, `d00e412`, 2026-10-21). Cancellation follow-up merged in PR #16. Pack: `handoffs/batch5-restore-from-export.md` |
 | 5 follow-up. Restore cancellation | `fix/restore-scan-cancellation` | Stop ZIP scanning after cancellation in both passes | Merged (PR #16, `51ec760`, 2026-10-21). Tests, debug APK, schema check, lint and R8 passed on `d9a9173` (run 39542014075). |
-| 6. Restore duplicate safety and release readiness | `docs/release-readiness-plan` | Content-aware restore deduplication in a separate code PR, phone acceptance and dependency triage | Plan merged in PR #17 (`eb7ccc0`). Duplicate fix prepared on `fix/restore-content-duplicates`; see PR checks for CI. Independent review and phone acceptance pending. Pack: `handoffs/batch6-release-readiness.md`. |
+| 6. Restore duplicate safety and release readiness | `docs/release-readiness-plan` | Content-aware restore deduplication in a separate code PR, phone acceptance and dependency triage | Plan merged in PR #17 (`eb7ccc0`). Duplicate fix merged in PR #18 (`057d137`), after independent review; tests, debug APK, schema, lint and R8 passed on `2ece771` (run 39545621054). Phone acceptance pending. Pack: `handoffs/batch6-release-readiness.md`. |
+| 6 maintenance. CI Actions refresh | `chore/ci-actions-refresh` | Update workflow Actions using open-source basic Gradle caching; triage the broad Gradle upgrade separately | Implementation prepared; see PR checks for current CI. Independent review pending. Triage: `reviews/batch6-dependency-triage.md`. |
 
 ## Captions (merged, PR #9)
 Jan wants Lifetime to replace social media, so a moment should carry its own words, like a post. Full plan in `handoffs/captions.md`. In short:
