@@ -61,3 +61,9 @@ See `../handoffs/batch6-room-patch.md`. Keep the database at v2, retain the comm
 Room 2.7.2 merged in PR #21 (`a55b4da`); run 39551344760 passed on `3a48737`, including v1 migration, old-v2 reopen on APIs 26/33, schema, debug build, lint and R8.
 
 Next, update the existing Fragment dependency from 1.8.6 to 1.8.9 within its current release series. MainActivity is a FragmentActivity because BiometricPrompt needs a fragment host. The [official release notes](https://developer.android.com/jetpack/androidx/releases/fragment#1.8.9) include lifecycle/back-stack fixes across 1.8.7-1.8.9; 1.8.8 specifically fixes saving a fragment capped at INITIALIZED before onCreate. Add a real host/FragmentManager save-and-restore regression for that case, without claiming device biometric verification. See `../handoffs/batch6-fragment-patch.md`. Fragment 1.9, Android build-tool migration and biometric-library changes remain separate.
+
+
+## Media3 maintenance step
+Fragment 1.8.9 merged in PR #23 (`fda75a8`); run 39553665382 passed on `410e2b6`, including host save/restore on APIs 26/33.
+
+Select Media3 1.6.1 to 1.8.0 for ExoPlayer/UI together. The [tagged release notes](https://github.com/androidx/media/blob/1.8.0/RELEASENOTES.md) include Bluetooth pause/resume synchronization and video surface/extractor fixes. 1.7.1 has the same code as 1.6.1, so it is not an implementation update. The [1.8.0 constants](https://github.com/androidx/media/blob/1.8.0/constants.gradle) retain compileSdk 35 and minSdk 21; keep Lifetime's existing SDK/toolchain and verify resolution, tests, lint, debug and R8 in CI. See `../handoffs/batch6-media3-update.md` for device acceptance. No device playback result is claimed. The current broad Dependabot replacement is #22 and remains separate from this bounded update.
