@@ -12,7 +12,13 @@ enum class MomentSource { CAMERA, IMPORT }
  * One photo or video in the timeline. The file itself lives in app-private storage
  * under [relativePath] (see [MediaStorage]); this row is everything we know about it.
  */
-@Entity(tableName = "moments", indices = [Index("capturedAt")])
+@Entity(
+    tableName = "moments",
+    indices = [
+        Index("capturedAt"),
+        Index(value = ["relativePath"], unique = true),
+    ],
+)
 data class Moment(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val type: MediaType,

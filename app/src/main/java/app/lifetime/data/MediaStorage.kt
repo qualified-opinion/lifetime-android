@@ -2,11 +2,15 @@ package app.lifetime.data
 
 import android.content.Context
 import java.io.File
+import java.io.IOException
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /**
  * App-private file store, organised by year and month:
@@ -24,12 +28,29 @@ class MediaStorage(
 ) {
     constructor(context: Context) : this(File(context.filesDir, "media"), File(context.filesDir, "incoming"))
 
+    private val commitLock = Any()
+
     init {
         root.mkdirs()
         incoming.mkdirs()
     }
 
-    fun fileFor(moment: Moment): File = File(root, moment.relativePath)
+    /**
+     * Resolves [relativePath] under the media root. Rejects anything that escapes the root
+     * (e.g. `../` or an absolute path), so a tampered row cannot touch other app-private files.
+     */
+    fun fileFor(moment: Moment): File = resolve(moment.relativePath)
+
+    fun resolve(relativePath: String): File {
+        val rootCanonical = root.canonicalFile
+        val resolved = File(root, relativePath).canonicalFile
+        val rootPath = rootCanonical.path
+        check(
+            resolved == rootCanonical ||
+                resolved.path.startsWith(rootPath + File.separator),
+        ) { "Path escapes media root: $relativePath" }
+        return resolved
+    }
 
     /** A scratch file for a capture or import that is still being written. */
     fun newTempFile(extension: String): File {
@@ -40,6 +61,7 @@ class MediaStorage(
     /**
      * Moves a finished temp file into its year/month folder and returns its relative path.
      * Reserved paths protect existing database references even when their files are missing.
+     * Commits are serialized and the target is created without replacing an existing file.
      */
     fun commit(
         temp: File,
@@ -47,38 +69,69 @@ class MediaStorage(
         capturedAt: Long,
         extension: String,
         reservedPaths: Set<String> = emptySet(),
-    ): String {
+    ): String = synchronized(commitLock) {
         val time = Instant.ofEpochMilli(capturedAt).atZone(zone())
         val folder = String.format(Locale.ROOT, "%04d/%02d", time.year, time.monthValue)
         val prefix = if (type == MediaType.VIDEO) "VID" else "IMG"
         val stamp = NAME_FORMAT.format(time)
 
         val dir = File(root, folder).apply { mkdirs() }
-        var name = "${prefix}_$stamp.$extension"
-        var n = 1
-        while (File(dir, name).exists() || "$folder/$name" in reservedPaths) {
-            name = "${prefix}_${stamp}_${n++}.$extension"
-        }
-        val target = File(dir, name)
-        // Rename is atomic on the same volume; fall back to copy if it isn't.
-        if (!temp.renameTo(target)) {
+        var n = 0
+        while (true) {
+            val name = if (n == 0) "${prefix}_$stamp.$extension" else "${prefix}_${stamp}_${n}.$extension"
+            n++
+            val relativePath = "$folder/$name"
+            if (relativePath in reservedPaths) continue
+            val target = File(dir, name)
+            if (target.exists()) continue
             try {
-                temp.copyTo(target, overwrite = false)
-                check(temp.delete()) { "Couldn't remove incoming file after filing" }
-            } catch (failure: Throwable) {
-                if (failure !is FileAlreadyExistsException) target.delete()
-                throw failure
+                moveIntoPlace(temp, target)
+                return relativePath
+            } catch (_: FileAlreadyExistsException) {
+                // Another writer won the name; try the next suffix.
             }
         }
-        return "$folder/$name"
+        @Suppress("UNREACHABLE_CODE")
+        error("unreachable")
     }
 
-    /** Leftovers from captures that never finished (app killed mid-recording, etc). */
-    fun clearIncoming() {
-        incoming.listFiles()?.forEach { it.delete() }
+    /**
+     * Leftovers from captures that never finished (app killed mid-recording, etc).
+     * Skips temps newer than [minAgeMs] so an in-flight capture or import is not deleted.
+     */
+    fun clearIncoming(
+        nowMs: Long = System.currentTimeMillis(),
+        minAgeMs: Long = DEFAULT_INCOMING_MIN_AGE_MS,
+    ) {
+        incoming.listFiles()?.forEach { file ->
+            val age = nowMs - file.lastModified()
+            if (age >= minAgeMs) file.delete()
+        }
     }
 
-    private companion object {
-        val NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS", Locale.ROOT)
+    private fun moveIntoPlace(temp: File, target: File) {
+        // Files.move without REPLACE_EXISTING refuses to clobber an existing target.
+        try {
+            Files.move(temp.toPath(), target.toPath())
+            return
+        } catch (exists: FileAlreadyExistsException) {
+            throw exists
+        } catch (_: IOException) {
+            // Cross-device or other rename failure: copy without overwriting, then remove temp.
+        }
+        try {
+            Files.copy(temp.toPath(), target.toPath())
+            check(temp.delete()) { "Couldn't remove incoming file after filing" }
+        } catch (failure: Throwable) {
+            if (failure !is FileAlreadyExistsException) target.delete()
+            throw failure
+        }
+    }
+
+    companion object {
+        val DEFAULT_INCOMING_MIN_AGE_MS: Long = TimeUnit.MINUTES.toMillis(10)
+
+        private val NAME_FORMAT: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS", Locale.ROOT)
     }
 }

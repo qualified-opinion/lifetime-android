@@ -237,9 +237,17 @@ class MomentRepository(
 
     private suspend fun insert(moment: Moment): Moment = moment.copy(id = dao.insert(moment))
 
-    suspend fun delete(moment: Moment) = withContext(Dispatchers.IO) {
-        storage.fileFor(moment).delete()
+    /**
+     * Removes the timeline row first, then the file, under [NonCancellable] so leaving the
+     * viewer mid-delete cannot cancel after the file is gone and leave a broken row.
+     * A failed file delete may leave an orphan file; it must never leave a row without a file.
+     */
+    suspend fun delete(moment: Moment) = withContext(NonCancellable + Dispatchers.IO) {
         dao.delete(moment)
+        val file = storage.fileFor(moment)
+        if (file.exists() && !file.delete()) {
+            Log.w(TAG, "Couldn't delete media file after removing row: $file")
+        }
     }
 
     /**

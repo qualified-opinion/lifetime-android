@@ -45,7 +45,7 @@ class MigrationTest {
         }
 
         val database = Room.databaseBuilder(context, LifetimeDatabase::class.java, name)
-            .addMigrations(LifetimeDatabase.MIGRATION_1_2)
+            .addMigrations(LifetimeDatabase.MIGRATION_1_2, LifetimeDatabase.MIGRATION_2_3)
             .build()
         try {
             val row = runBlocking { database.momentDao().get(7) }!!
@@ -58,7 +58,8 @@ class MigrationTest {
                 ),
                 row,
             )
-            assertEquals(2, database.openHelper.readableDatabase.version)
+            assertEquals(3, database.openHelper.readableDatabase.version)
+            assertTrue(hasUniqueRelativePathIndex(database.openHelper.readableDatabase))
             runBlocking { database.momentDao().updateCaption(7, "Saved after the upgrade") }
             assertEquals("Saved after the upgrade", runBlocking { database.momentDao().get(7) }!!.caption)
         } finally {
@@ -98,7 +99,7 @@ class MigrationTest {
         }
 
         fun open() = Room.databaseBuilder(context, LifetimeDatabase::class.java, name)
-            .addMigrations(LifetimeDatabase.MIGRATION_1_2)
+            .addMigrations(LifetimeDatabase.MIGRATION_1_2, LifetimeDatabase.MIGRATION_2_3)
             .build()
         val added = original.copy(
             id = 0, type = MediaType.VIDEO, source = MomentSource.IMPORT,
@@ -108,6 +109,8 @@ class MigrationTest {
         val firstOpen = open()
         val addedId = try {
             assertEquals(listOf(original), firstOpen.momentDao().getAll())
+            assertEquals(3, firstOpen.openHelper.readableDatabase.version)
+            assertTrue(hasUniqueRelativePathIndex(firstOpen.openHelper.readableDatabase))
             firstOpen.momentDao().updateCaption(original.id, "Edited after the Room patch")
             firstOpen.momentDao().insert(added)
         } finally {
@@ -121,10 +124,51 @@ class MigrationTest {
                 listOf(original.copy(caption = "Edited after the Room patch"), added.copy(id = addedId)),
                 reopened.momentDao().getAll(),
             )
-            assertEquals(2, reopened.openHelper.readableDatabase.version)
+            assertEquals(3, reopened.openHelper.readableDatabase.version)
         } finally {
             reopened.close()
             context.deleteDatabase(name)
         }
+    }
+
+    @Test fun migrationFromV2AddsUniqueRelativePathIndex() {
+        val name = "migration-v2-to-v3.db"
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs(); delete() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            db.execSQL("CREATE TABLE IF NOT EXISTS `moments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `source` TEXT NOT NULL, `relativePath` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `capturedAt` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `sizeBytes` INTEGER NOT NULL, `caption` TEXT)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_moments_capturedAt` ON `moments` (`capturedAt`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)")
+            db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '835509693198fc013408674eb7b1c4c0')")
+            db.execSQL(
+                "INSERT INTO moments VALUES (3, 'PHOTO', 'CAMERA', '2026/10/IMG_keep.jpg', 'image/jpeg', 1760000000000, 1760000001000, " +
+                    "NULL, NULL, 100, 100, 0, 10, 'kept')",
+            )
+            db.version = 2
+        }
+
+        val database = Room.databaseBuilder(context, LifetimeDatabase::class.java, name)
+            .addMigrations(LifetimeDatabase.MIGRATION_2_3)
+            .build()
+        try {
+            val row = runBlocking { database.momentDao().get(3) }!!
+            assertEquals("2026/10/IMG_keep.jpg", row.relativePath)
+            assertEquals("kept", row.caption)
+            assertEquals(3, database.openHelper.readableDatabase.version)
+            assertTrue(hasUniqueRelativePathIndex(database.openHelper.readableDatabase))
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    private fun hasUniqueRelativePathIndex(db: androidx.sqlite.db.SupportSQLiteDatabase): Boolean {
+        db.query("PRAGMA index_list(`moments`)").use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(cursor.getColumnIndexOrThrow("name"))
+                val unique = cursor.getInt(cursor.getColumnIndexOrThrow("unique")) == 1
+                if (name == "index_moments_relativePath" && unique) return true
+            }
+        }
+        return false
     }
 }

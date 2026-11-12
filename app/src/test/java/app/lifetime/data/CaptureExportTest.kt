@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -36,6 +37,7 @@ class CaptureExportTest {
         val rows = CopyOnWriteArrayList<Moment>()
         var insertFailure: Exception? = null
         var locationUpdates = 0
+        var beforeDelete: suspend (Moment) -> Unit = {}
 
         override fun observeAll() = flowOf(emptyList<Moment>())
         override suspend fun getAll() = rows.toList()
@@ -46,7 +48,10 @@ class CaptureExportTest {
             rows.add(moment.copy(id = id))
             return id
         }
-        override suspend fun delete(moment: Moment) { rows.remove(moment) }
+        override suspend fun delete(moment: Moment) {
+            beforeDelete(moment)
+            rows.remove(moment)
+        }
         override suspend fun updateCaption(id: Long, caption: String?): Int {
             val row = get(id) ?: return 0
             rows[rows.indexOf(row)] = row.copy(caption = caption)
@@ -428,6 +433,40 @@ class CaptureExportTest {
             }
             assertTrue(withTimeout(5_000) { vm.messages.first() }.startsWith("Export failed:"))
             assertFalse(target.exists())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun deleteRemovesTheRowEvenWhenTheCallerIsCancelled() = runBlocking {
+        val f = Fixture()
+        try {
+            val row = f.savedCapture()
+            val file = f.repository.fileFor(row)
+            assertTrue(file.exists())
+            val started = CompletableDeferred<Unit>()
+            val allowDelete = CompletableDeferred<Unit>()
+            f.dao.beforeDelete = {
+                started.complete(Unit)
+                allowDelete.await()
+            }
+            val job = launch(Dispatchers.IO) { f.repository.delete(row) }
+            withTimeout(5_000) { started.await() }
+            job.cancel()
+            allowDelete.complete(Unit)
+            withTimeout(5_000) { job.join() }
+            assertTrue(f.dao.rows.isEmpty())
+            assertFalse(file.exists())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun deleteRemovesTheRowEvenIfTheFileIsAlreadyGone() = runBlocking {
+        val f = Fixture()
+        try {
+            val row = f.savedCapture()
+            val file = f.repository.fileFor(row)
+            assertTrue(file.delete())
+            f.repository.delete(row)
+            assertTrue(f.dao.rows.isEmpty())
+            assertFalse(file.exists())
         } finally { f.scope.cancel() }
     }
 }

@@ -124,7 +124,8 @@ fun TimelineScreen(
     val mediaLocationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { _ -> openPicker() } // A denial still continues the import.
-    val launchImport = {
+    val launchImport = launchImport@{
+        if (busy != null) return@launchImport
         if (Build.VERSION.SDK_INT >= 29 && !vm.mediaLocationRequested &&
             ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -135,6 +136,7 @@ fun TimelineScreen(
             openPicker()
         }
     }
+    val idle = busy == null
 
     // Turning the lock on asks for the phone's unlock first, so it is known to work.
     val toggleAppLock = toggle@{
@@ -194,12 +196,13 @@ fun TimelineScreen(
                         DropdownMenuItem(
                             text = { Text("Import photos and videos") },
                             leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) },
+                            enabled = idle,
                             onClick = { menuOpen = false; launchImport() },
                         )
                         DropdownMenuItem(
                             text = { Text("Export everything (.zip)") },
                             leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
-                            enabled = state.totalMoments > 0,
+                            enabled = idle && state.totalMoments > 0,
                             onClick = {
                                 menuOpen = false
                                 exportLauncher.launch("lifetime-export-${LocalDate.now()}.zip")
@@ -208,7 +211,7 @@ fun TimelineScreen(
                         DropdownMenuItem(
                             text = { Text("Restore from export (.zip)") },
                             leadingIcon = { Icon(Icons.Outlined.Restore, null) },
-                            enabled = busy == null,
+                            enabled = idle,
                             onClick = {
                                 menuOpen = false
                                 restoreLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
@@ -249,7 +252,10 @@ fun TimelineScreen(
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 state.loading -> Unit
-                state.totalMoments == 0 -> EmptyTimeline(onCapture = onOpenCamera, onImport = launchImport)
+                state.totalMoments == 0 -> EmptyTimeline(
+                    onCapture = onOpenCamera,
+                    onImport = launchImport,
+                )
                 else -> TimelineList(
                     state = state,
                     listState = listState,

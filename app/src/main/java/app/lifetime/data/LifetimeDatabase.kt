@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Moment::class], version = 2, exportSchema = true)
+@Database(entities = [Moment::class], version = 3, exportSchema = true)
 abstract class LifetimeDatabase : RoomDatabase() {
     abstract fun momentDao(): MomentDao
 
@@ -19,9 +19,18 @@ abstract class LifetimeDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 makes relativePath unique so two rows cannot share one media file. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_moments_relativePath` ON `moments` (`relativePath`)",
+                )
+            }
+        }
+
         fun create(context: Context): LifetimeDatabase =
             Room.databaseBuilder(context, LifetimeDatabase::class.java, "lifetime.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

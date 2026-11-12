@@ -27,8 +27,9 @@ class ViewerViewModel(
 
     fun fileFor(moment: Moment): File = repository.fileFor(moment)
 
+    /** App scope so leaving the viewer mid-delete still finishes the row/file cleanup. */
     fun delete(moment: Moment) {
-        viewModelScope.launch { repository.delete(moment) }
+        appScope.launch { repository.delete(moment) }
     }
 
     /** Sets or clears a caption. App scope, so leaving the viewer right after Save still stores it. */

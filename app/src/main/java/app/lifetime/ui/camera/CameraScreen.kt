@@ -94,7 +94,11 @@ private const val MAX_VIDEO_MS = 60_000L
 private val RecordRed = Color(0xFFE5484D)
 
 @Composable
-fun CameraScreen(onClose: () -> Unit, onOpenMoment: (Long) -> Unit) {
+fun CameraScreen(
+    onClose: () -> Unit,
+    onOpenMoment: (Long) -> Unit,
+    cameraActive: Boolean = true,
+) {
     DarkSystemBars()
     val context = LocalContext.current
     val app = context.applicationContext as LifetimeApp
@@ -123,7 +127,13 @@ fun CameraScreen(onClose: () -> Unit, onOpenMoment: (Long) -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (hasCamera) {
-            CameraContent(vm = vm, hasAudio = hasAudio, onClose = onClose, onOpenMoment = onOpenMoment)
+            CameraContent(
+                vm = vm,
+                hasAudio = hasAudio,
+                cameraActive = cameraActive,
+                onClose = onClose,
+                onOpenMoment = onOpenMoment,
+            )
         } else if (asked) {
             CameraPermissionMessage(onClose = onClose)
         }
@@ -135,6 +145,7 @@ fun CameraScreen(onClose: () -> Unit, onOpenMoment: (Long) -> Unit) {
 private fun CameraContent(
     vm: CameraViewModel,
     hasAudio: Boolean,
+    cameraActive: Boolean,
     onClose: () -> Unit,
     onOpenMoment: (Long) -> Unit,
 ) {
@@ -149,8 +160,12 @@ private fun CameraContent(
             imageCaptureMode = ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
         }
     }
-    DisposableEffect(lifecycleOwner) {
-        controller.bindToLifecycle(lifecycleOwner)
+    DisposableEffect(lifecycleOwner, cameraActive) {
+        if (cameraActive) {
+            controller.bindToLifecycle(lifecycleOwner)
+        } else {
+            controller.unbind()
+        }
         onDispose { controller.unbind() }
     }
 
@@ -159,6 +174,7 @@ private fun CameraContent(
     var recording by remember { mutableStateOf<Recording?>(null) }
     var recordedNanos by remember { mutableLongStateOf(0L) }
     var flash by remember { mutableStateOf(false) }
+    var takingPhoto by remember { mutableStateOf(false) }
 
     val lastCapture by vm.lastCapture.collectAsStateWithLifecycle()
     // The caption prompt belongs to the newest capture; a new shot replaces it, so skipping is free.
@@ -196,6 +212,8 @@ private fun CameraContent(
     }
 
     fun takePhoto() {
+        if (takingPhoto || !cameraActive) return
+        takingPhoto = true
         val file = vm.newCaptureFile(MediaType.PHOTO)
         val capturedAt = System.currentTimeMillis()
         flash = true
@@ -204,10 +222,12 @@ private fun CameraContent(
             mainExecutor,
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    takingPhoto = false
                     vm.onCaptured(file, MediaType.PHOTO, capturedAt)
                 }
 
                 override fun onError(exception: ImageCaptureException) {
+                    takingPhoto = false
                     file.delete()
                     Toast.makeText(context, "Couldn't take photo: ${exception.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -220,6 +240,7 @@ private fun CameraContent(
             it.stop()
             return
         }
+        if (!cameraActive) return
         val file = vm.newCaptureFile(MediaType.VIDEO)
         val capturedAt = System.currentTimeMillis()
         recordedNanos = 0
@@ -360,7 +381,11 @@ private fun CameraContent(
                 ShutterButton(
                     mode = mode,
                     recording = isRecording,
-                    onClick = { if (mode == MediaType.PHOTO) takePhoto() else toggleRecording() },
+                    enabled = cameraActive && (mode == MediaType.VIDEO || !takingPhoto),
+                    onClick = {
+                        if (!cameraActive) return@ShutterButton
+                        if (mode == MediaType.PHOTO) takePhoto() else toggleRecording()
+                    },
                 )
 
                 IconButton(
@@ -426,12 +451,18 @@ private fun ModeLabel(text: String, selected: Boolean, enabled: Boolean, onClick
 }
 
 @Composable
-private fun ShutterButton(mode: MediaType, recording: Boolean, onClick: () -> Unit) {
+private fun ShutterButton(
+    mode: MediaType,
+    recording: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     val innerSize by animateDpAsState(if (recording) 28.dp else 60.dp, label = "shutterSize")
     val corner by animateDpAsState(if (recording) 6.dp else 30.dp, label = "shutterCorner")
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(78.dp).border(4.dp, Color.White, CircleShape).clip(CircleShape).clickable(onClick = onClick),
+        modifier = Modifier.size(78.dp).border(4.dp, Color.White, CircleShape).clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
         Box(
             Modifier.size(innerSize).clip(RoundedCornerShape(corner))
