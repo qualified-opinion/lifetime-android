@@ -161,6 +161,42 @@ class MigrationTest {
         }
     }
 
+    @Test fun migrationFromV2MergesRowsSharingARelativePathAndKeepsTheCaption() {
+        val name = "migration-v2-duplicates.db"
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs(); delete() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            db.execSQL("CREATE TABLE IF NOT EXISTS `moments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `source` TEXT NOT NULL, `relativePath` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `capturedAt` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `sizeBytes` INTEGER NOT NULL, `caption` TEXT)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_moments_capturedAt` ON `moments` (`capturedAt`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)")
+            db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '835509693198fc013408674eb7b1c4c0')")
+            db.execSQL(
+                "INSERT INTO moments VALUES (4, 'PHOTO', 'CAMERA', '2026/10/IMG_shared.jpg', 'image/jpeg', 1760000000000, 1760000001000, " +
+                    "NULL, NULL, 100, 100, 0, 10, NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO moments VALUES (6, 'PHOTO', 'CAMERA', '2026/10/IMG_shared.jpg', 'image/jpeg', 1760000000000, 1760000002000, " +
+                    "NULL, NULL, 100, 100, 0, 10, 'Written on the duplicate')",
+            )
+            db.version = 2
+        }
+
+        val database = Room.databaseBuilder(context, LifetimeDatabase::class.java, name)
+            .addMigrations(LifetimeDatabase.MIGRATION_2_3)
+            .build()
+        try {
+            val rows = runBlocking { database.momentDao().getAll() }
+            assertEquals(1, rows.size)
+            assertEquals(4L, rows.single().id)
+            assertEquals("2026/10/IMG_shared.jpg", rows.single().relativePath)
+            assertEquals("Written on the duplicate", rows.single().caption)
+            assertEquals(3, database.openHelper.readableDatabase.version)
+            assertTrue(hasUniqueRelativePathIndex(database.openHelper.readableDatabase))
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     private fun hasUniqueRelativePathIndex(db: androidx.sqlite.db.SupportSQLiteDatabase): Boolean {
         db.query("PRAGMA index_list(`moments`)").use { cursor ->
             while (cursor.moveToNext()) {

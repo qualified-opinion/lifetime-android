@@ -413,6 +413,38 @@ class CaptureExportTest {
         } finally { f.scope.cancel() }
     }
 
+    @Test fun rowsWithAnEscapingPathAreMissingInExportAndTimeline() = runBlocking {
+        val f = Fixture()
+        try {
+            val kept = f.savedCapture()
+            val outside = File(tmp.root, "outside.mp4").apply { writeText("not media") }
+            val escaping = f.savedCapture().copy(relativePath = "../${outside.name}")
+            f.dao.rows[1] = escaping
+            val target = File(tmp.root, "export.zip")
+            val vm = TimelineViewModel(f.repository, f.scope)
+            assertNull(vm.fileFor(escaping))
+            assertEquals(f.repository.fileFor(kept), vm.fileFor(kept))
+            withTimeout(5_000) {
+                vm.export {
+                    f.repository.exportZip(
+                        openTarget = { target.outputStream() },
+                        deleteTarget = { target.delete() },
+                        encodeIndex = { moments ->
+                            assertEquals(listOf(kept), moments)
+                            "{}".toByteArray()
+                        },
+                    ).also { assertEquals(MomentRepository.ExportResult(1, 1), it) }
+                }.join()
+            }
+            assertEquals("Exported 1 moments (1 files were missing)", withTimeout(5_000) { vm.messages.first() })
+            ZipFile(target).use { zip ->
+                assertEquals(setOf("media/${kept.relativePath}", "moments.json"), zip.entries().asSequence().map { it.name }.toSet())
+            }
+            assertTrue(outside.exists())
+            assertTrue(f.unhandled.isEmpty())
+        } finally { f.scope.cancel() }
+    }
+
     @Test fun exportSuccessOmitsMissingSuffixWhenNoFilesAreMissing() = runBlocking {
         val f = Fixture()
         try {
@@ -467,6 +499,18 @@ class CaptureExportTest {
             f.repository.delete(row)
             assertTrue(f.dao.rows.isEmpty())
             assertFalse(file.exists())
+        } finally { f.scope.cancel() }
+    }
+
+    @Test fun deleteRemovesTheRowWithoutThrowingForAnEscapingPath() = runBlocking {
+        val f = Fixture()
+        try {
+            val outside = File(tmp.root, "outside.mp4").apply { writeText("not media") }
+            val row = f.savedCapture().copy(relativePath = "../${outside.name}")
+            f.dao.rows[0] = row
+            f.repository.delete(row)
+            assertTrue(f.dao.rows.isEmpty())
+            assertTrue(outside.exists())
         } finally { f.scope.cancel() }
     }
 }

@@ -31,7 +31,7 @@ import java.io.File
 @Composable
 fun MomentThumbnail(
     moment: Moment,
-    file: File,
+    file: File?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

@@ -41,6 +41,15 @@ class MediaStorage(
      */
     fun fileFor(moment: Moment): File = resolve(moment.relativePath)
 
+    /** Like [fileFor], but null for a path that escapes the root or can't be resolved; treat it as missing. */
+    fun fileOrNull(moment: Moment): File? = try {
+        fileFor(moment)
+    } catch (_: IllegalStateException) {
+        null
+    } catch (_: IOException) {
+        null
+    }
+
     fun resolve(relativePath: String): File {
         val rootCanonical = root.canonicalFile
         val resolved = File(root, relativePath).canonicalFile

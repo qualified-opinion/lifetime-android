@@ -25,7 +25,8 @@ class ViewerViewModel(
     val moments: StateFlow<List<Moment>?> = repository.moments
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun fileFor(moment: Moment): File = repository.fileFor(moment)
+    /** Null for a row whose path can't be used; the viewer shows it as missing. */
+    fun fileFor(moment: Moment): File? = repository.fileOrNull(moment)
 
     /** App scope so leaving the viewer mid-delete still finishes the row/file cleanup. */
     fun delete(moment: Moment) {

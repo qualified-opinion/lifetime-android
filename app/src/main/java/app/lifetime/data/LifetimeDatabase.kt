@@ -19,9 +19,31 @@ abstract class LifetimeDatabase : RoomDatabase() {
             }
         }
 
-        /** v3 makes relativePath unique so two rows cannot share one media file. */
+        /**
+         * v3 makes relativePath unique so two rows cannot share one media file. Existing
+         * duplicates collapse into the lowest id, which takes a duplicate's caption if it has
+         * none. Only rows are removed; the shared media file stays.
+         */
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE moments SET caption = (
+                        SELECT d.caption FROM moments d
+                        WHERE d.relativePath = moments.relativePath AND d.id <> moments.id
+                            AND d.caption IS NOT NULL AND TRIM(d.caption) <> ''
+                        ORDER BY d.id LIMIT 1
+                    )
+                    WHERE (caption IS NULL OR TRIM(caption) = '')
+                        AND id IN (SELECT MIN(id) FROM moments GROUP BY relativePath HAVING COUNT(*) > 1)
+                        AND EXISTS (
+                            SELECT 1 FROM moments d
+                            WHERE d.relativePath = moments.relativePath AND d.id <> moments.id
+                                AND d.caption IS NOT NULL AND TRIM(d.caption) <> ''
+                        )
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM moments WHERE id NOT IN (SELECT MIN(id) FROM moments GROUP BY relativePath)")
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_moments_relativePath` ON `moments` (`relativePath`)",
                 )

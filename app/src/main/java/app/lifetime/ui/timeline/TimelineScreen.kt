@@ -316,7 +316,7 @@ fun TimelineScreen(
 private fun TimelineList(
     state: TimelineState,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    fileFor: (Moment) -> File,
+    fileFor: (Moment) -> File?,
     onOpenMoment: (Long) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
@@ -376,7 +376,7 @@ private fun TimelineList(
 }
 
 @Composable
-private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File, onOpenMoment: (Long) -> Unit) {
+private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File?, onOpenMoment: (Long) -> Unit) {
     val ratio = if (row.columns == 1) 4f / 3f else 1f
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -397,7 +397,7 @@ private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File, onOpenMome
 
 /** A captioned moment: the photo or video at full width (in its own shape, within limits), its words under it. */
 @Composable
-private fun PostRow(moment: Moment, file: File, onOpen: () -> Unit) {
+private fun PostRow(moment: Moment, file: File?, onOpen: () -> Unit) {
     val ratio = if (moment.width > 0 && moment.height > 0) {
         (moment.width.toFloat() / moment.height).coerceIn(4f / 5f, 16f / 9f)
     } else {

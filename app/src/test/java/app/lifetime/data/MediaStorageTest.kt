@@ -134,6 +134,24 @@ class MediaStorageTest {
     }
 
     @Test
+    fun fileOrNullTreatsEscapingPathsAsMissing() {
+        val storage = storage()
+        val at = Instant.parse("2026-10-16T12:00:00Z").toEpochMilli()
+        val path = storage.commit(tempWith(storage, "jpg", "ok"), MediaType.PHOTO, at, "jpg")
+        fun moment(relativePath: String) = Moment(
+            type = MediaType.PHOTO,
+            source = MomentSource.CAMERA,
+            relativePath = relativePath,
+            mimeType = "image/jpeg",
+            capturedAt = at,
+            addedAt = at,
+        )
+        assertEquals(null, storage.fileOrNull(moment("../secret.txt")))
+        assertEquals(null, storage.fileOrNull(moment("2026/../../secret.txt")))
+        assertEquals(storage.fileFor(moment(path)), storage.fileOrNull(moment(path)))
+    }
+
+    @Test
     fun fileForResolvesCanonicalPathsUnderTheRoot() {
         val storage = storage()
         val at = Instant.parse("2026-10-16T12:00:00Z").toEpochMilli()

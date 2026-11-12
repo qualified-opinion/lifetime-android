@@ -48,7 +48,8 @@ class TimelineViewModel internal constructor(
 
     private val busyLock = Any()
 
-    fun fileFor(moment: Moment): File = repository.fileFor(moment)
+    /** Null for a row whose path can't be used; the thumbnail shows it as missing. */
+    fun fileFor(moment: Moment): File? = repository.fileOrNull(moment)
 
     // Kept in the ViewModel so returning from the picker or camera does not repeat the prompt.
     internal var mediaLocationRequested = false

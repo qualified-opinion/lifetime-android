@@ -29,7 +29,7 @@ import java.io.File
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
-    file: File,
+    file: File?,
     isActive: Boolean,
     onControlsVisibleChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -40,8 +40,10 @@ fun VideoPlayer(
 
     val player = remember(file) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-            prepare()
+            if (file != null) {
+                setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                prepare()
+            }
         }
     }
     DisposableEffect(player) { onDispose { player.release() } }
