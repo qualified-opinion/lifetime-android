@@ -287,4 +287,43 @@ class ImportTest {
             assertNull(vm.busy.value)
         } finally { scope.cancel() }
     }
+
+    @Test fun busyLockPreventsImportExportAndRestoreFromOverlapping() = runBlocking {
+        val f = Fixture()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val vm = TimelineViewModel(f.repository, scope)
+            val releaseExport = CompletableDeferred<Unit>()
+            val exportStarted = CompletableDeferred<Unit>()
+            val exportJob = vm.export {
+                exportStarted.complete(Unit)
+                releaseExport.await()
+                MomentRepository.ExportResult(2, 0)
+            }
+            withTimeout(5_000) { exportStarted.await() }
+            assertEquals("Exporting your timeline…", vm.busy.value?.label)
+
+            var importRan = false
+            vm.import(1) {
+                importRan = true
+                MomentRepository.ImportResult(1, 0)
+            }.join()
+            assertFalse(importRan)
+
+            var restoreRan = false
+            vm.restore {
+                restoreRan = true
+                MomentRepository.RestoreResult(1, 0, 0)
+            }.join()
+            assertFalse(restoreRan)
+
+            releaseExport.complete(Unit)
+            withTimeout(5_000) { exportJob.join() }
+            assertEquals("Exported 2 moments", withTimeout(5_000) { vm.messages.first() })
+            assertNull(vm.busy.value)
+
+            withTimeout(5_000) { vm.import(1) { MomentRepository.ImportResult(1, 0) }.join() }
+            assertEquals("Added 1 moment", withTimeout(5_000) { vm.messages.first() })
+        } finally { scope.cancel() }
+    }
 }

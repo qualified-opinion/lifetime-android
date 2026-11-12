@@ -8,6 +8,7 @@ import app.lifetime.data.MomentRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,7 +38,7 @@ class TimelineViewModel internal constructor(
     /** A long import/export in progress. [progress] is 0..1, or null when unknown. */
     data class Busy(val label: String, val progress: Float? = null)
 
-    /** Non-null while a long import/export is running; shown as a small progress line. */
+    /** Non-null while a long import/export/restore is running; shown as a small progress line. */
     private val _busy = MutableStateFlow<Busy?>(null)
     val busy: StateFlow<Busy?> = _busy.asStateFlow()
 
@@ -45,7 +46,10 @@ class TimelineViewModel internal constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    fun fileFor(moment: Moment): File = repository.fileFor(moment)
+    private val busyLock = Any()
+
+    /** Null for a row whose path can't be used; the thumbnail shows it as missing. */
+    fun fileFor(moment: Moment): File? = repository.fileOrNull(moment)
 
     // Kept in the ViewModel so returning from the picker or camera does not repeat the prompt.
     internal var mediaLocationRequested = false
@@ -58,41 +62,50 @@ class TimelineViewModel internal constructor(
     internal fun import(
         totalItems: Int,
         read: suspend ((Int, Int) -> Unit) -> MomentRepository.ImportResult,
-    ) = scope.launch {
-        _busy.value = if (totalItems == 1) Busy("Importing…") else Busy("Importing 0 of $totalItems…", 0f)
-        try {
-            val result = read { done, total ->
-                if (total > 1) _busy.value = Busy("Importing $done of $total…", done / total.toFloat())
+    ): Job {
+        if (!beginBusy(
+                if (totalItems == 1) Busy("Importing…") else Busy("Importing 0 of $totalItems…", 0f),
+            )
+        ) {
+            return alreadyDone()
+        }
+        return scope.launch {
+            try {
+                val result = read { done, total ->
+                    if (total > 1) _busy.value = Busy("Importing $done of $total…", done / total.toFloat())
+                }
+                val failed = totalItems - result.imported
+                _messages.send(buildString {
+                    append(if (result.imported == 1) "Added 1 moment" else "Added ${result.imported} moments")
+                    if (result.undated > 0) append(" (${result.undated} had no date, filed under today)")
+                    if (failed > 0) append(" ($failed couldn't be read)")
+                })
+            } finally {
+                endBusy()
             }
-            val failed = totalItems - result.imported
-            _messages.send(buildString {
-                append(if (result.imported == 1) "Added 1 moment" else "Added ${result.imported} moments")
-                if (result.undated > 0) append(" (${result.undated} had no date, filed under today)")
-                if (failed > 0) append(" ($failed couldn't be read)")
-            })
-        } finally {
-            _busy.value = null
         }
     }
 
     fun export(target: Uri) = export { repository.exportZip(target) }
 
-    internal fun export(writeZip: suspend () -> MomentRepository.ExportResult) = scope.launch {
-        _busy.value = Busy("Exporting your timeline…")
-        try {
-            val exported = writeZip()
-            _messages.trySend(buildString {
-                append("Exported ${exported.exported} moments")
-                if (exported.missing > 0) append(" (${exported.missing} files were missing)")
-            })
-        } catch (cancelled: CancellationException) {
-            // The repository has finished cleanup; sending must also work in a cancelled scope.
-            _messages.trySend("Export failed: ${cancelled.message ?: "Export cancelled"}")
-            throw cancelled
-        } catch (failure: Exception) {
-            _messages.trySend("Export failed: ${failure.message}")
-        } finally {
-            _busy.value = null
+    internal fun export(writeZip: suspend () -> MomentRepository.ExportResult): Job {
+        if (!beginBusy(Busy("Exporting your timeline…"))) return alreadyDone()
+        return scope.launch {
+            try {
+                val exported = writeZip()
+                _messages.trySend(buildString {
+                    append("Exported ${exported.exported} moments")
+                    if (exported.missing > 0) append(" (${exported.missing} files were missing)")
+                })
+            } catch (cancelled: CancellationException) {
+                // The repository has finished cleanup; sending must also work in a cancelled scope.
+                _messages.trySend("Export failed: ${cancelled.message ?: "Export cancelled"}")
+                throw cancelled
+            } catch (failure: Exception) {
+                _messages.trySend("Export failed: ${failure.message}")
+            } finally {
+                endBusy()
+            }
         }
     }
 
@@ -100,26 +113,28 @@ class TimelineViewModel internal constructor(
 
     internal fun restore(
         read: suspend ((Int, Int) -> Unit) -> MomentRepository.RestoreResult,
-    ) = scope.launch {
-        _busy.value = Busy("Restoring…")
-        try {
-            val result = read { done, total ->
-                if (total > 1) _busy.value = Busy("Restoring $done of $total…", done / total.toFloat())
-            }
-            _messages.trySend(buildString {
-                append(if (result.restored == 1) "Restored 1 moment" else "Restored ${result.restored} moments")
-                val notes = buildList {
-                    if (result.alreadyHere > 0) add("${result.alreadyHere} already here")
-                    if (result.failed > 0) add("${result.failed} couldn't be read")
+    ): Job {
+        if (!beginBusy(Busy("Restoring…"))) return alreadyDone()
+        return scope.launch {
+            try {
+                val result = read { done, total ->
+                    if (total > 1) _busy.value = Busy("Restoring $done of $total…", done / total.toFloat())
                 }
-                if (notes.isNotEmpty()) append(notes.joinToString(", ", " (", ")"))
-            })
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            _messages.trySend("Restore failed: ${failure.message}")
-        } finally {
-            _busy.value = null
+                _messages.trySend(buildString {
+                    append(if (result.restored == 1) "Restored 1 moment" else "Restored ${result.restored} moments")
+                    val notes = buildList {
+                        if (result.alreadyHere > 0) add("${result.alreadyHere} already here")
+                        if (result.failed > 0) add("${result.failed} couldn't be read")
+                    }
+                    if (notes.isNotEmpty()) append(notes.joinToString(", ", " (", ")"))
+                })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _messages.trySend("Restore failed: ${failure.message}")
+            } finally {
+                endBusy()
+            }
         }
     }
 
@@ -129,4 +144,17 @@ class TimelineViewModel internal constructor(
         if (days.isEmpty()) return null
         return (days.firstOrNull { (day, _) -> !day.isAfter(date) } ?: days.last()).second
     }
+
+    private fun beginBusy(busy: Busy): Boolean = synchronized(busyLock) {
+        if (_busy.value != null) return false
+        _busy.value = busy
+        true
+    }
+
+    private fun endBusy() = synchronized(busyLock) {
+        _busy.value = null
+    }
+
+    /** Completed job for a no-op when another long op already holds the busy lock. */
+    private fun alreadyDone(): Job = Job().apply { complete() }
 }

@@ -124,7 +124,8 @@ fun TimelineScreen(
     val mediaLocationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { _ -> openPicker() } // A denial still continues the import.
-    val launchImport = {
+    val launchImport = launchImport@{
+        if (busy != null) return@launchImport
         if (Build.VERSION.SDK_INT >= 29 && !vm.mediaLocationRequested &&
             ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -135,6 +136,7 @@ fun TimelineScreen(
             openPicker()
         }
     }
+    val idle = busy == null
 
     // Turning the lock on asks for the phone's unlock first, so it is known to work.
     val toggleAppLock = toggle@{
@@ -194,12 +196,13 @@ fun TimelineScreen(
                         DropdownMenuItem(
                             text = { Text("Import photos and videos") },
                             leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) },
+                            enabled = idle,
                             onClick = { menuOpen = false; launchImport() },
                         )
                         DropdownMenuItem(
                             text = { Text("Export everything (.zip)") },
                             leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
-                            enabled = state.totalMoments > 0,
+                            enabled = idle && state.totalMoments > 0,
                             onClick = {
                                 menuOpen = false
                                 exportLauncher.launch("lifetime-export-${LocalDate.now()}.zip")
@@ -208,7 +211,7 @@ fun TimelineScreen(
                         DropdownMenuItem(
                             text = { Text("Restore from export (.zip)") },
                             leadingIcon = { Icon(Icons.Outlined.Restore, null) },
-                            enabled = busy == null,
+                            enabled = idle,
                             onClick = {
                                 menuOpen = false
                                 restoreLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
@@ -249,7 +252,10 @@ fun TimelineScreen(
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 state.loading -> Unit
-                state.totalMoments == 0 -> EmptyTimeline(onCapture = onOpenCamera, onImport = launchImport)
+                state.totalMoments == 0 -> EmptyTimeline(
+                    onCapture = onOpenCamera,
+                    onImport = launchImport,
+                )
                 else -> TimelineList(
                     state = state,
                     listState = listState,
@@ -310,7 +316,7 @@ fun TimelineScreen(
 private fun TimelineList(
     state: TimelineState,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    fileFor: (Moment) -> File,
+    fileFor: (Moment) -> File?,
     onOpenMoment: (Long) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
@@ -370,7 +376,7 @@ private fun TimelineList(
 }
 
 @Composable
-private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File, onOpenMoment: (Long) -> Unit) {
+private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File?, onOpenMoment: (Long) -> Unit) {
     val ratio = if (row.columns == 1) 4f / 3f else 1f
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -391,7 +397,7 @@ private fun GridRow(row: TimelineRow.Grid, fileFor: (Moment) -> File, onOpenMome
 
 /** A captioned moment: the photo or video at full width (in its own shape, within limits), its words under it. */
 @Composable
-private fun PostRow(moment: Moment, file: File, onOpen: () -> Unit) {
+private fun PostRow(moment: Moment, file: File?, onOpen: () -> Unit) {
     val ratio = if (moment.width > 0 && moment.height > 0) {
         (moment.width.toFloat() / moment.height).coerceIn(4f / 5f, 16f / 9f)
     } else {

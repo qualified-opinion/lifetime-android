@@ -47,8 +47,9 @@ class MainActivity : FragmentActivity() {
                 val locked by container.appLock.locked.collectAsStateWithLifecycle()
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     // Kept composed while locked so unlocking returns to the same screen.
+                    // Camera unbinds while locked so preview/LED are not live under the lock UI.
                     Box(Modifier.fillMaxSize().then(if (locked) Modifier.clearAndSetSemantics {} else Modifier)) {
-                        LifetimeNavHost()
+                        LifetimeNavHost(cameraActive = !locked)
                     }
                     if (locked) LockScreen(container.appLock)
                 }
@@ -82,7 +83,7 @@ private object Routes {
 }
 
 @androidx.compose.runtime.Composable
-private fun LifetimeNavHost() {
+private fun LifetimeNavHost(cameraActive: Boolean) {
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = Routes.TIMELINE) {
         composable(Routes.TIMELINE) {
@@ -93,6 +94,7 @@ private fun LifetimeNavHost() {
         }
         composable(Routes.CAMERA) {
             CameraScreen(
+                cameraActive = cameraActive,
                 onClose = { nav.popBackStack() },
                 onOpenMoment = { nav.navigate(Routes.moment(it)) },
             )

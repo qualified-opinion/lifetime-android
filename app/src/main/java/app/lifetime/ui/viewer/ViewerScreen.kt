@@ -1,6 +1,7 @@
 package app.lifetime.ui.viewer
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -170,7 +171,7 @@ private fun ViewerPager(
                 }
             }
             current?.let { m ->
-                IconButton(onClick = { shareMoment(context, m, vm.fileFor(m)) }) {
+                IconButton(onClick = { vm.fileFor(m)?.let { shareMoment(context, m, it) } }) {
                     Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White)
                 }
             }
@@ -218,7 +219,7 @@ private fun ViewerPager(
 
     if (showInfo && current != null) {
         ModalBottomSheet(onDismissRequest = { showInfo = false }) {
-            MomentInfo(current, vm.fileFor(current).name)
+            MomentInfo(current, vm.fileFor(current)?.name ?: current.fileName)
         }
     }
 
@@ -333,6 +334,7 @@ private fun shareMoment(context: android.content.Context, moment: Moment, file: 
     val send = Intent(Intent.ACTION_SEND).apply {
         type = moment.mimeType
         putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newUri(context.contentResolver, moment.fileName, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, null))

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Moment::class], version = 2, exportSchema = true)
+@Database(entities = [Moment::class], version = 3, exportSchema = true)
 abstract class LifetimeDatabase : RoomDatabase() {
     abstract fun momentDao(): MomentDao
 
@@ -19,9 +19,40 @@ abstract class LifetimeDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 makes relativePath unique so two rows cannot share one media file. Existing
+         * duplicates collapse into the lowest id, which takes a duplicate's caption if it has
+         * none. Only rows are removed; the shared media file stays.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE moments SET caption = (
+                        SELECT d.caption FROM moments d
+                        WHERE d.relativePath = moments.relativePath AND d.id <> moments.id
+                            AND d.caption IS NOT NULL AND TRIM(d.caption) <> ''
+                        ORDER BY d.id LIMIT 1
+                    )
+                    WHERE (caption IS NULL OR TRIM(caption) = '')
+                        AND id IN (SELECT MIN(id) FROM moments GROUP BY relativePath HAVING COUNT(*) > 1)
+                        AND EXISTS (
+                            SELECT 1 FROM moments d
+                            WHERE d.relativePath = moments.relativePath AND d.id <> moments.id
+                                AND d.caption IS NOT NULL AND TRIM(d.caption) <> ''
+                        )
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM moments WHERE id NOT IN (SELECT MIN(id) FROM moments GROUP BY relativePath)")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_moments_relativePath` ON `moments` (`relativePath`)",
+                )
+            }
+        }
+
         fun create(context: Context): LifetimeDatabase =
             Room.databaseBuilder(context, LifetimeDatabase::class.java, "lifetime.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

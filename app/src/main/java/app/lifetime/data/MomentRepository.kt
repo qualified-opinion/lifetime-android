@@ -50,6 +50,9 @@ class MomentRepository(
 
     fun fileFor(moment: Moment): File = storage.fileFor(moment)
 
+    /** Null when the row's path is unusable; callers show or count it as a missing file. */
+    fun fileOrNull(moment: Moment): File? = storage.fileOrNull(moment)
+
     /** Where the camera should write a new capture before it is committed. */
     fun newCaptureFile(type: MediaType): File =
         storage.newTempFile(if (type == MediaType.VIDEO) "mp4" else "jpg")
@@ -237,9 +240,22 @@ class MomentRepository(
 
     private suspend fun insert(moment: Moment): Moment = moment.copy(id = dao.insert(moment))
 
-    suspend fun delete(moment: Moment) = withContext(Dispatchers.IO) {
-        storage.fileFor(moment).delete()
+    /**
+     * Removes the timeline row first, then the file, under [NonCancellable] so leaving the
+     * viewer mid-delete cannot cancel after the file is gone and leave a broken row.
+     * A failed file delete may leave an orphan file; it must never leave a row without a file.
+     * Once the row is gone the delete counts as done, even if the file step fails.
+     */
+    suspend fun delete(moment: Moment) = withContext(NonCancellable + Dispatchers.IO) {
         dao.delete(moment)
+        try {
+            val file = storage.fileFor(moment)
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Couldn't delete media file after removing row: $file")
+            }
+        } catch (failure: Exception) {
+            Log.w(TAG, "Couldn't delete media file after removing row: ${moment.relativePath}", failure)
+        }
     }
 
     /**
@@ -284,8 +300,8 @@ class MomentRepository(
                     zip.setLevel(Deflater.NO_COMPRESSION)
                     for (moment in all) {
                         ensureActive()
-                        val file = storage.fileFor(moment)
-                        if (!file.exists()) {
+                        val file = storage.fileOrNull(moment)
+                        if (file == null || !file.exists()) {
                             missing++
                             continue
                         }

@@ -42,7 +42,7 @@ private const val DOUBLE_TAP_SCALE = 2.5f
  */
 @Composable
 fun ZoomableImage(
-    file: File,
+    file: File?,
     isCurrentPage: Boolean,
     onTap: () -> Unit,
     onZoomedChange: (Boolean) -> Unit,
